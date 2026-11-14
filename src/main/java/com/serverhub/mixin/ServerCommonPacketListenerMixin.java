@@ -1,6 +1,8 @@
 package com.serverhub.mixin;
 
+import com.mojang.logging.LogUtils;
 import com.serverhub.config.HubConfig;
+import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.network.BlockStateRemapper;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
@@ -21,6 +23,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -36,6 +39,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(ServerCommonPacketListenerImpl.class)
 public abstract class ServerCommonPacketListenerMixin {
+    @Unique
+    private static final Logger SERVERHUB_LOGGER = LogUtils.getLogger();
+
     @Unique
     private static final int BASE_ENTITY_DATA_ID_LIMIT = 8;
 
@@ -97,8 +103,17 @@ public abstract class ServerCommonPacketListenerMixin {
     private int[] serverhub$ensureBlockRemapTable(ServerGamePacketListenerImpl gameListener) {
         if (!this.serverhub$blockRemapInitialized && gameListener.player != null) {
             this.serverhub$blockRemapInitialized = true;
+            var clientMods = ClientModTracker.getClientMods(gameListener.player.getUUID());
             this.serverhub$blockRemapTable =
                     BlockStateRemapper.getRemapForPlayer(gameListener.player.getUUID());
+            SERVERHUB_LOGGER.info(
+                    "[ServerHub] BlockState remap for {} ({}): mods={}, cataclysm={}, amendments={}, active={}",
+                    gameListener.player.getGameProfile().getName(),
+                    gameListener.player.getUUID(),
+                    clientMods.size(),
+                    clientMods.contains("cataclysm"),
+                    clientMods.contains("amendments"),
+                    this.serverhub$blockRemapTable != null);
             Channel channel = this.connection != null ? this.connection.channel() : null;
             if (channel != null && this.serverhub$blockRemapTable != null) {
                 channel.attr(BlockStateRemapper.CHANNEL_REMAP_KEY)
