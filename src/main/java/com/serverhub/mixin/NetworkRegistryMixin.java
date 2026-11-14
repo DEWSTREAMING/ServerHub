@@ -1,6 +1,7 @@
 package com.serverhub.mixin;
 
 import com.serverhub.config.HubConfig;
+import com.serverhub.handshake.ApothicEnchantingFallbackPayload;
 import com.serverhub.handshake.ClientModTracker;
 import java.util.Collections;
 import java.util.HashMap;
@@ -125,8 +126,14 @@ public abstract class NetworkRegistryMixin {
             ConnectionProtocol protocol,
             PacketFlow flow,
             CallbackInfoReturnable<StreamCodec<? super FriendlyByteBuf, ? extends CustomPacketPayload>> cir) {
-        if (HubConfig.get().isHubRole()
-                && flow == PacketFlow.SERVERBOUND
+        if (!HubConfig.get().isHubRole()) {
+            return;
+        }
+        if (flow == PacketFlow.CLIENTBOUND && ApothicEnchantingFallbackPayload.ID.equals(id)) {
+            cir.setReturnValue(ApothicEnchantingFallbackPayload.STREAM_CODEC);
+            return;
+        }
+        if (flow == PacketFlow.SERVERBOUND
                 && !BUILTIN_PAYLOADS.containsKey(id)
                 && !"minecraft".equals(id.getNamespace())
                 && !serverhub$hasServerRegistration(protocol, id)) {

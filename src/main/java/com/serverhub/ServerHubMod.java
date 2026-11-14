@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.command.HubCommands;
 import com.serverhub.config.HubConfig;
+import com.serverhub.handshake.ApothicEnchantingFallbackPayload;
 import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.relay.RelayClient;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
@@ -168,6 +170,11 @@ public class ServerHubMod {
         }
         if (!HubConfig.get().isHubRole()) {
             return;
+        }
+        if (ClientModTracker.getClientMods(player.getUUID()).contains("apothic_enchanting")
+                && player.connection != null
+                && player.connection.hasChannel(ApothicEnchantingFallbackPayload.ID)) {
+            player.connection.send(new ClientboundCustomPayloadPacket(new ApothicEnchantingFallbackPayload()));
         }
         Optional<String> originId = ClientModTracker.getOriginServer(player.getUUID());
         if (originId.isPresent()) {

@@ -7,6 +7,7 @@
     "NetworkRegistryMixin",
     "ConfigurationInitializationMixin",
     "ServerRecipeBookMixin",
+    "ServerCommonPacketListenerMixin",
     "MinecraftServerMixin",
     "DedicatedServerMixin"
   ],
