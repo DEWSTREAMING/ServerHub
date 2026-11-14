@@ -60,6 +60,9 @@ public abstract class ServerCommonPacketListenerMixin {
     @Nullable
     private int[] serverhub$blockRemapTable;
 
+    @Unique
+    private boolean serverhub$sendingRewritten;
+
     @Shadow
     public abstract void send(Packet<?> packet, @Nullable PacketSendListener listener);
 
@@ -69,7 +72,7 @@ public abstract class ServerCommonPacketListenerMixin {
             cancellable = true)
     private void serverhub$skipRecipePacketsOnHub(
             Packet<?> packet, @Nullable PacketSendListener listener, CallbackInfo ci) {
-        if (!HubConfig.get().isHubRole()) {
+        if (this.serverhub$sendingRewritten || !HubConfig.get().isHubRole()) {
             return;
         }
         if (packet instanceof ClientboundUpdateRecipesPacket
@@ -88,7 +91,12 @@ public abstract class ServerCommonPacketListenerMixin {
             if (sanitized == null) {
                 ci.cancel();
             } else if (sanitized != packet) {
-                this.send(sanitized, listener);
+                this.serverhub$sendingRewritten = true;
+                try {
+                    this.send(sanitized, listener);
+                } finally {
+                    this.serverhub$sendingRewritten = false;
+                }
                 ci.cancel();
             }
         }
