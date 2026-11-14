@@ -8,6 +8,7 @@
     "ConfigurationInitializationMixin",
     "ServerRecipeBookMixin",
     "ServerCommonPacketListenerMixin",
+    "ServerConfigurationPacketListenerMixin",
     "MinecraftServerMixin",
     "DedicatedServerMixin"
   ],
