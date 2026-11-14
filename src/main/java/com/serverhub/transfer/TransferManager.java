@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.ClientboundStoreCookiePacket;
 import net.minecraft.network.protocol.common.ClientboundTransferPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -69,7 +70,7 @@ public final class TransferManager {
             }
         }
 
-        player.connection.send(new ClientboundTransferPacket(target.host(), target.port()));
+        sendTransferWithAuthCookie(player, target.host(), target.port());
         return true;
     }
 
@@ -86,7 +87,7 @@ public final class TransferManager {
             relay.sendPlayerOrigin(player.getUUID(), cfg.serverId);
         }
 
-        player.connection.send(new ClientboundTransferPacket(cfg.hubHost, cfg.hubPort));
+        sendTransferWithAuthCookie(player, cfg.hubHost, cfg.hubPort);
         return true;
     }
 
@@ -121,7 +122,7 @@ public final class TransferManager {
             }
             player.sendSystemMessage(Component.literal("Server is restarting. Redirecting you to the Hub...")
                     .withStyle(ChatFormatting.YELLOW));
-            player.connection.send(new ClientboundTransferPacket(cfg.hubHost, cfg.hubPort));
+            sendTransferWithAuthCookie(player, cfg.hubHost, cfg.hubPort);
             player.connection.getConnection().flushChannel();
         }
 
@@ -130,5 +131,13 @@ public final class TransferManager {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static void sendTransferWithAuthCookie(ServerPlayer player, String host, int port) {
+        byte[] token = TransferAuthToken.issue(player.getGameProfile());
+        if (token != null) {
+            player.connection.send(new ClientboundStoreCookiePacket(TransferAuthToken.COOKIE_KEY, token));
+        }
+        player.connection.send(new ClientboundTransferPacket(host, port));
     }
 }

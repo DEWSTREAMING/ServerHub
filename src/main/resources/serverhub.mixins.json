@@ -13,7 +13,8 @@
     "PacketEncoderMixin",
     "IdMapperMixin",
     "MinecraftServerMixin",
-    "DedicatedServerMixin"
+    "DedicatedServerMixin",
+    "ServerLoginPacketListenerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

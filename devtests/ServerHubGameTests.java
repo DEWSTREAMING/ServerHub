@@ -1,5 +1,7 @@
 package com.serverhub.devtest;
 
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
 import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
@@ -11,6 +13,7 @@ import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
 import com.serverhub.relay.RelayServer;
 import com.serverhub.relay.ServerStatusInfo;
+import com.serverhub.transfer.TransferAuthToken;
 import io.netty.buffer.Unpooled;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -430,6 +433,46 @@ public class ServerHubGameTests {
             rawBuf.release();
         }
 
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void transferAuthTokenRoundTripAndReplayProtection(GameTestHelper helper) {
+        HubConfig cfg = HubConfig.get();
+        String previousSecret = cfg.sharedSecret;
+        cfg.sharedSecret = "test-transfer-cookie-secret";
+        try {
+            UUID playerId = UUID.randomUUID();
+            GameProfile original = new GameProfile(playerId, "DEWSTREAM_");
+            original.getProperties().put("textures", new Property("textures", "eyJ0ZXN0IjoxfQ==", "c2ln"));
+
+            byte[] token = TransferAuthToken.issue(original);
+            helper.assertTrue(token != null && token.length > 32, "Transfer cookie token should be issued");
+
+            byte[] tampered = token.clone();
+            tampered[0] ^= 0x01;
+            helper.assertTrue(
+                    TransferAuthToken.verifyAndConsume(tampered, "DEWSTREAM_") == null,
+                    "Tampered transfer cookie must be rejected");
+            helper.assertTrue(
+                    TransferAuthToken.verifyAndConsume(token, "OtherPlayer") == null,
+                    "Transfer cookie for wrong username must be rejected");
+
+            GameProfile verified = TransferAuthToken.verifyAndConsume(token, "DEWSTREAM_");
+            helper.assertTrue(verified != null, "Valid transfer cookie should verify");
+            helper.assertTrue(playerId.equals(verified.getId()), "Verified UUID should match");
+            helper.assertTrue("DEWSTREAM_".equals(verified.getName()), "Verified username should match");
+            Property tex = verified.getProperties().get("textures").stream().findFirst().orElse(null);
+            helper.assertTrue(
+                    tex != null && "eyJ0ZXN0IjoxfQ==".equals(tex.value()) && "c2ln".equals(tex.signature()),
+                    "Verified textures property should match");
+
+            helper.assertTrue(
+                    TransferAuthToken.verifyAndConsume(token, "DEWSTREAM_") == null,
+                    "Replayed transfer cookie must be rejected");
+        } finally {
+            cfg.sharedSecret = previousSecret;
+        }
         helper.succeed();
     }
 
