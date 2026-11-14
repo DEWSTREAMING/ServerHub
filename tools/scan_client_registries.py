@@ -45,6 +45,17 @@ EXTRA_MODDED_REGISTRIES = {
     ("forbidden_arcanus", "item_modifier"): "forbidden_arcanus:item_modifier",
 }
 
+STATIC_TAG_REGISTRIES = (
+    "block",
+    "entity_type",
+    "fluid",
+    "game_event",
+    "item",
+    "point_of_interest_type",
+)
+
+TAG_SCAN_REGISTRIES = SYNCED_MINECRAFT_REGISTRIES + STATIC_TAG_REGISTRIES
+
 MOD_ID_TOML_RE = re.compile(r'^\s*modId\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
@@ -111,7 +122,7 @@ def scan_instance(instance_dir: str, pack_id: str) -> dict:
                 # Tags: data/<tag_ns>/tags/<reg_path...>/<tag_name>.json
                 if parts[2] == "tags" and len(parts) >= 5:
                     rel_after_tags = "/".join(parts[3:])
-                    for reg in SYNCED_MINECRAFT_REGISTRIES:
+                    for reg in TAG_SCAN_REGISTRIES:
                         prefix = reg + "/"
                         if rel_after_tags.startswith(prefix):
                             tag_name = rel_after_tags[len(prefix) : -len(".json")]
@@ -137,9 +148,14 @@ def scan_instance(instance_dir: str, pack_id: str) -> dict:
                             registries[f"minecraft:{reg}"].add(f"{ns}:{entry_name}")
                         break
 
+    mc_version = detect_mc_version(instance_dir)
+    if mc_version.startswith("26."):
+        # 26.x vanilla item tag referenced by modded enchantments but absent on 1.21.1 Hubs.
+        tags["minecraft:item"].add("minecraft:enchantable/melee_weapon")
+
     return {
         "packId": pack_id,
-        "minecraftVersion": detect_mc_version(instance_dir),
+        "minecraftVersion": mc_version,
         "modIds": sorted(mod_ids),
         "registries": {k: sorted(v) for k, v in sorted(registries.items()) if v},
         "tags": {k: sorted(v) for k, v in sorted(tags.items()) if v},
