@@ -17,9 +17,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -170,6 +172,17 @@ public class ServerHubMod {
         }
         if (!HubConfig.get().isHubRole()) {
             return;
+        }
+        ServerLevel overworld = player.server.overworld();
+        if (overworld != null) {
+            BlockPos spawn = overworld.getSharedSpawnPos();
+            player.teleportTo(
+                    overworld,
+                    spawn.getX() + 0.5D,
+                    spawn.getY(),
+                    spawn.getZ() + 0.5D,
+                    overworld.getSharedSpawnAngle(),
+                    0.0F);
         }
         if (ClientModTracker.getClientMods(player.getUUID()).contains("apothic_enchanting")
                 && player.connection != null
