@@ -347,6 +347,8 @@ public class ServerHubGameTests {
         int firstSkullId =
                 Block.getId(Blocks.SKELETON_SKULL.getStateDefinition().getPossibleStates().get(0));
         int defaultSkullId = Block.getId(Blocks.SKELETON_SKULL.defaultBlockState());
+        int firstWallSkullId =
+                Block.getId(Blocks.SKELETON_WALL_SKULL.getStateDefinition().getPossibleStates().get(0));
         int seaLanternId = Block.getId(Blocks.SEA_LANTERN.defaultBlockState());
         int heavyCoreId = Block.getId(Blocks.HEAVY_CORE.defaultBlockState());
 
@@ -366,17 +368,20 @@ public class ServerHubGameTests {
                 BlockStateRemapper.remapId(defaultSkullId, table) == defaultSkullId + 170,
                 "Default skeleton skull state (powered=false, rotation=0) should shift by +170");
         helper.assertTrue(
-                BlockStateRemapper.remapId(seaLanternId, table) == seaLanternId + 377,
-                "Sea lantern after skull blocks should shift by +377");
+                BlockStateRemapper.remapId(firstWallSkullId, table) == firstWallSkullId + 186,
+                "First skeleton wall skull state should shift by +186");
         helper.assertTrue(
-                BlockStateRemapper.remapId(heavyCoreId, table) == heavyCoreId + 377,
-                "Heavy core at end of registry should shift by +377");
+                BlockStateRemapper.remapId(seaLanternId, table) == seaLanternId + 433,
+                "Sea lantern after all skull and wall skull blocks should shift by +433");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(heavyCoreId, table) == heavyCoreId + 433,
+                "Heavy core at end of registry should shift by +433");
 
         // Verify IdMapperMixin remaps Block.getId during active encode scope and restores afterward.
         try {
             BlockStateRemapper.setActiveEncodeRemap(table);
             helper.assertTrue(
-                    Block.getId(Blocks.SEA_LANTERN.defaultBlockState()) == seaLanternId + 377,
+                    Block.getId(Blocks.SEA_LANTERN.defaultBlockState()) == seaLanternId + 433,
                     "IdMapperMixin should return remapped sea_lantern ID while encode remap is active");
         } finally {
             BlockStateRemapper.clearActiveEncodeRemap();
@@ -416,7 +421,7 @@ public class ServerHubGameTests {
                         remappedPalette.contains(iceId + 150),
                         "Remapped palette should contain shifted ice ID");
                 helper.assertTrue(
-                        remappedPalette.contains(seaLanternId + 377),
+                        remappedPalette.contains(seaLanternId + 433),
                         "Remapped palette should contain shifted sea_lantern ID");
             } finally {
                 checkBuf.release();

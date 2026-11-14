@@ -10,9 +10,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.VarInt;
 import net.minecraft.util.SimpleBitStorage;
+import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.SkullBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -25,8 +25,9 @@ import net.minecraft.world.level.block.state.BlockState;
  *   <li>{@code cataclysm}: appends 3 {@code NoteBlockInstrument} values to {@code minecraft:note_block}
  *       (+150 states after {@code note_block}).</li>
  *   <li>{@code amendments}: adds {@code boiling} to {@code minecraft:water_cauldron} (+3 states,
- *       vanilla {@code boiling=false} at +3) and {@code waterlogged} to the 7 {@link SkullBlock}s
- *       (+32 states each, vanilla {@code waterlogged=false} at {@code 2*i + 1}).</li>
+ *       vanilla {@code boiling=false} at +3) and {@code waterlogged} to all 14
+ *       {@link AbstractSkullBlock}s (7 {@code SkullBlock}s + 7 {@code WallSkullBlock}s:
+ *       +224 + 56 = +280 states, vanilla {@code waterlogged=false} at {@code 2*i + 1}).</li>
  * </ul>
  */
 public final class BlockStateRemapper {
@@ -83,7 +84,7 @@ public final class BlockStateRemapper {
                 for (BlockState state : block.getStateDefinition().getPossibleStates()) {
                     table[Block.getId(state)] = clientId++;
                 }
-            } else if (hasAmendments && block instanceof SkullBlock) {
+            } else if (hasAmendments && block instanceof AbstractSkullBlock) {
                 for (BlockState state : block.getStateDefinition().getPossibleStates()) {
                     clientId++;
                     table[Block.getId(state)] = clientId++;
