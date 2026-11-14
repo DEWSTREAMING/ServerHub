@@ -1,8 +1,11 @@
 package com.serverhub.mixin;
 
 import com.serverhub.config.HubConfig;
+import com.serverhub.handshake.HubConfigSyncTask;
+import net.minecraft.network.protocol.configuration.ServerConfigurationPacketListener;
 import net.neoforged.neoforge.network.ConfigurationInitialization;
 import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
+import net.neoforged.neoforge.network.payload.ConfigFilePayload;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,6 +21,10 @@ public abstract class ConfigurationInitializationMixin {
             RegisterConfigurationTasksEvent event,
             CallbackInfo ci) {
         if (HubConfig.get().isHubRole()) {
+            ServerConfigurationPacketListener listener = event.getListener();
+            if (listener.hasChannel(ConfigFilePayload.TYPE)) {
+                event.register(new HubConfigSyncTask(listener));
+            }
             ci.cancel();
         }
     }
