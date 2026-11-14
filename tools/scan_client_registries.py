@@ -41,9 +41,66 @@ SYNCED_MINECRAFT_REGISTRIES = (
     "zombie_nautilus_variant",
 )
 
-EXTRA_MODDED_REGISTRIES = {
-    ("forbidden_arcanus", "item_modifier"): "forbidden_arcanus:item_modifier",
-}
+SYNCED_MODDED_REGISTRIES = (
+    ("aether_ii", "bestiary_entry"),
+    ("aether_ii", "effects_entry"),
+    ("aether_ii", "exploration_entry"),
+    ("aether_ii", "glitterwing_variant"),
+    ("aether_ii", "item_reinforcement"),
+    ("aether_ii", "reward_wrapper"),
+    ("aether_ii", "shroudwing_variant"),
+    ("aether_ii", "skyroot_lizard_variant"),
+    ("aether_ii", "style_design"),
+    ("aether_ii", "style_material"),
+    ("arsmagicalegacy", "ability"),
+    ("arsmagicalegacy", "affinity"),
+    ("arsmagicalegacy", "altar_cap_material"),
+    ("arsmagicalegacy", "altar_material"),
+    ("arsmagicalegacy", "etherium_type"),
+    ("arsmagicalegacy", "occulus_tab"),
+    ("arsmagicalegacy", "plant"),
+    ("arsmagicalegacy", "ritual"),
+    ("arsmagicalegacy", "skill"),
+    ("arsmagicalegacy", "skill_point"),
+    ("arsmagicalegacy", "spell_part_data"),
+    ("arsmagicalegacy", "spell_prefab"),
+    ("chisel", "smashing_rock"),
+    ("chisel", "variant_families"),
+    ("chisel", "weathering_chains"),
+    ("enderio", "conduit"),
+    ("energizedpower", "soil_type"),
+    ("forbidden_arcanus", "constellation"),
+    ("forbidden_arcanus", "enhancer/definition"),
+    ("forbidden_arcanus", "hephaestus_forge/ritual"),
+    ("forbidden_arcanus", "item_modifier"),
+    ("forbidden_arcanus", "knowledge"),
+    ("forbidden_arcanus", "magic_circle"),
+    ("forbidden_arcanus", "molten_material_type"),
+    ("forbidden_arcanus", "wand/material"),
+    ("irons_jewelry", "material"),
+    ("irons_jewelry", "part"),
+    ("irons_jewelry", "pattern"),
+    ("neovitae", "altar_tier"),
+    ("neovitae", "ritual_layout"),
+    ("neovitae", "sentient_upgrades"),
+    ("oritech", "augments"),
+    ("productivebees", "bee_data"),
+    ("starcatcher", "fish"),
+    ("thaumaturge", "aspect"),
+    ("thaumaturge", "blueprint"),
+    ("thaumaturge", "research_category"),
+    ("thaumaturge", "research_entry"),
+    ("thaumaturge", "scan"),
+    ("thaumaturge", "spell_affinity"),
+    ("thaumaturge", "spell_part"),
+    ("twilight", "dwarf_rabbit_variant"),
+    ("twilight", "magic_paintings"),
+    ("twilight", "restrictions"),
+    ("twilight", "tiny_bird_variant"),
+    ("twilight", "travellers_modifiers"),
+    ("undergarden", "stoneborn_trade"),
+    ("undergarden", "stoneborn_trade_set"),
+)
 
 STATIC_TAG_REGISTRIES = (
     "block",
@@ -122,24 +179,37 @@ def scan_instance(instance_dir: str, pack_id: str) -> dict:
                 # Tags: data/<tag_ns>/tags/<reg_path...>/<tag_name>.json
                 if parts[2] == "tags" and len(parts) >= 5:
                     rel_after_tags = "/".join(parts[3:])
+                    matched = False
                     for reg in TAG_SCAN_REGISTRIES:
                         prefix = reg + "/"
                         if rel_after_tags.startswith(prefix):
                             tag_name = rel_after_tags[len(prefix) : -len(".json")]
                             tags[f"minecraft:{reg}"].add(f"{ns}:{tag_name}")
+                            matched = True
                             break
+                    if not matched:
+                        for reg_ns, reg_path in SYNCED_MODDED_REGISTRIES:
+                            prefix = f"{reg_ns}/{reg_path}/"
+                            if rel_after_tags.startswith(prefix):
+                                tag_name = rel_after_tags[len(prefix) : -len(".json")]
+                                tags[f"{reg_ns}:{reg_path}"].add(f"{ns}:{tag_name}")
+                                break
                     continue
 
                 # Modded dynamic registry: data/<entry_ns>/<reg_ns>/<reg_path>/<entry>.json
-                if len(parts) >= 5 and (parts[2], parts[3]) in EXTRA_MODDED_REGISTRIES:
-                    reg_id = EXTRA_MODDED_REGISTRIES[(parts[2], parts[3])]
-                    entry_name = "/".join(parts[4:])[: -len(".json")]
-                    if ns != "minecraft":
-                        registries[reg_id].add(f"{ns}:{entry_name}")
+                rel_after_ns = "/".join(parts[2:])
+                matched_modded = False
+                for reg_ns, reg_path in SYNCED_MODDED_REGISTRIES:
+                    prefix = f"{reg_ns}/{reg_path}/"
+                    if rel_after_ns.startswith(prefix):
+                        entry_name = rel_after_ns[len(prefix) : -len(".json")]
+                        registries[f"{reg_ns}:{reg_path}"].add(f"{ns}:{entry_name}")
+                        matched_modded = True
+                        break
+                if matched_modded:
                     continue
 
                 # Standard synced minecraft registry: data/<entry_ns>/<reg_path>/<entry>.json
-                rel_after_ns = "/".join(parts[2:])
                 for reg in SYNCED_MINECRAFT_REGISTRIES:
                     prefix = reg + "/"
                     if rel_after_ns.startswith(prefix):
