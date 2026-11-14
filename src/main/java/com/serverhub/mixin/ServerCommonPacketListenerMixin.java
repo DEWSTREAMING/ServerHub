@@ -81,11 +81,7 @@ public abstract class ServerCommonPacketListenerMixin {
             int[] remapTable = serverhub$ensureBlockRemapTable(gameListener);
             if (packet instanceof ClientboundLevelChunkWithLightPacket chunkPacket
                     && remapTable != null) {
-                ClientboundLevelChunkPacketDataMixin chunkData =
-                        (ClientboundLevelChunkPacketDataMixin) (Object) chunkPacket.getChunkData();
-                chunkData.serverhub$setBuffer(
-                        BlockStateRemapper.remapChunkDataBuffer(
-                                chunkData.serverhub$getBuffer(), remapTable));
+                serverhub$remapChunkPacket(chunkPacket, remapTable);
             }
             Packet<?> sanitized =
                     serverhub$rewritePlayPacket(gameListener, packet, remapTable);
@@ -96,6 +92,16 @@ public abstract class ServerCommonPacketListenerMixin {
                 ci.cancel();
             }
         }
+    }
+
+    @Unique
+    private static void serverhub$remapChunkPacket(
+            ClientboundLevelChunkWithLightPacket chunkPacket, int[] remapTable) {
+        ClientboundLevelChunkPacketDataMixin chunkData =
+                (ClientboundLevelChunkPacketDataMixin) (Object) chunkPacket.getChunkData();
+        chunkData.serverhub$setBuffer(
+                BlockStateRemapper.remapChunkDataBuffer(
+                        chunkData.serverhub$getBuffer(), remapTable));
     }
 
     @Unique
@@ -157,6 +163,14 @@ public abstract class ServerCommonPacketListenerMixin {
                 }
             }
             if (!needsSanitizing) {
+                if (remapTable != null) {
+                    for (Packet<? super ClientGamePacketListener> subPacket :
+                            bundlePacket.subPackets()) {
+                        if (subPacket instanceof ClientboundLevelChunkWithLightPacket chunkPacket) {
+                            serverhub$remapChunkPacket(chunkPacket, remapTable);
+                        }
+                    }
+                }
                 return bundlePacket;
             }
             List<Packet<? super ClientGamePacketListener>> sanitized = new ArrayList<>();
