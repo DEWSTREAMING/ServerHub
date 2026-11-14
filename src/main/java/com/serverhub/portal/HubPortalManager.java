@@ -63,7 +63,7 @@ public final class HubPortalManager {
 
         long now = System.currentTimeMillis();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            String dim = player.level().dimension().location().toString();
+            String dim = player.level().dimension().identifier().toString();
             double x = player.getX();
             double y = player.getY();
             double z = player.getZ();

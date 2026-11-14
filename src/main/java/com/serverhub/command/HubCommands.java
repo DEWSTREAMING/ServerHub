@@ -12,7 +12,6 @@ import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
-import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.ServerStatusInfo;
 import com.serverhub.transfer.TransferManager;
@@ -28,6 +27,7 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.permissions.Permissions;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -88,7 +88,7 @@ public final class HubCommands {
                 .then(Commands.literal("status").executes(HubCommands::cmdChatStatus)));
 
         dispatcher.register(Commands.literal("hubadmin")
-                .requires(src -> src.hasPermission(2))
+                .requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
                 .then(Commands.literal("reload").executes(HubCommands::cmdAdminReload))
                 .then(Commands.literal("generatehub")
                         .executes(HubCommands::cmdAdminGenerateHubHere)
@@ -265,7 +265,6 @@ public final class HubCommands {
 
     private static int cmdAdminReload(CommandContext<CommandSourceStack> ctx) {
         HubConfig.reload();
-        RegistryManifests.reload();
         ChatMuteManager.load();
         ctx.getSource().sendSuccess(
                 () -> Component.literal("Server Hub configuration reloaded.").withStyle(ChatFormatting.GREEN),
@@ -278,7 +277,7 @@ public final class HubCommands {
         ServerLevel level = src.getLevel();
         BlockPos floorCenter = src.getEntity() != null
                 ? BlockPos.containing(src.getPosition()).below()
-                : level.getSharedSpawnPos().below();
+                : level.getRespawnData().pos().below();
         return generateHubAt(src, level, floorCenter);
     }
 
@@ -368,7 +367,7 @@ public final class HubCommands {
         double x2 = DoubleArgumentType.getDouble(ctx, "x2");
         double y2 = DoubleArgumentType.getDouble(ctx, "y2");
         double z2 = DoubleArgumentType.getDouble(ctx, "z2");
-        String dim = ctx.getSource().getLevel().dimension().location().toString();
+        String dim = ctx.getSource().getLevel().dimension().identifier().toString();
 
         HubConfig cfg = HubConfig.get();
         cfg.portals.removeIf(p -> name.equalsIgnoreCase(p.name));

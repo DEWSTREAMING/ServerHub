@@ -161,8 +161,8 @@ public abstract class ServerLoginPacketListenerMixin {
             this.serverhub$verifiedTransferProfile = null;
             SERVERHUB_LOGGER.info(
                     "Verified transfer cookie for {} ({}), skipping Mojang session lookup",
-                    verified.getName(),
-                    verified.getId());
+                    verified.name(),
+                    verified.id());
             this.startClientVerification(verified);
             ci.cancel();
         }

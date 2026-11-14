@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.LevelData;
 
 public final class HubStructureGenerator {
     public static final List<String> PREMADE_PORTAL_NAMES = List.of("north", "east", "south", "west");
@@ -34,7 +35,7 @@ public final class HubStructureGenerator {
         int cx = floorCenter.getX();
         int cy = floorCenter.getY();
         int cz = floorCenter.getZ();
-        String dim = level.dimension().location().toString();
+        String dim = level.dimension().identifier().toString();
 
         clearVolumeAndBuildFloor(level, cx, cy, cz);
 
@@ -70,7 +71,7 @@ public final class HubStructureGenerator {
         }
 
         HubConfig.save();
-        level.setDefaultSpawnPos(new BlockPos(cx, cy + 1, cz), 0.0f);
+        level.setRespawnData(LevelData.RespawnData.of(level.dimension(), new BlockPos(cx, cy + 1, cz), 0.0f, 0.0f));
         updatePortalSigns(level.getServer());
         return generated;
     }
@@ -262,7 +263,7 @@ public final class HubStructureGenerator {
             return server.overworld();
         }
         for (ServerLevel level : server.getAllLevels()) {
-            if (dimensionId.equalsIgnoreCase(level.dimension().location().toString())) {
+            if (dimensionId.equalsIgnoreCase(level.dimension().identifier().toString())) {
                 return level;
             }
         }

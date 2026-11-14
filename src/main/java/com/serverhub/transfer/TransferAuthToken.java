@@ -1,7 +1,10 @@
 package com.serverhub.transfer;
 
+import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.Multimap;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
 import com.serverhub.config.HubConfig;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -19,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,8 +33,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class TransferAuthToken {
     private static final Logger LOGGER = LoggerFactory.getLogger(TransferAuthToken.class);
-    public static final ResourceLocation COOKIE_KEY =
-            ResourceLocation.fromNamespaceAndPath("serverhub", "transfer_token");
+    public static final Identifier COOKIE_KEY =
+            Identifier.fromNamespaceAndPath("serverhub", "transfer_token");
 
     private static final byte VERSION = 1;
     private static final int HMAC_BYTES = 32;
@@ -61,12 +64,12 @@ public final class TransferAuthToken {
 
     @Nullable
     static byte[] issueWithSecret(GameProfile profile, String secret, long expiresAtMs) {
-        Property textures = profile.getProperties().get("textures").stream().findFirst().orElse(null);
+        Property textures = profile.properties().get("textures").stream().findFirst().orElse(null);
         UUID nonce = new UUID(RANDOM.nextLong(), RANDOM.nextLong());
         try {
-            byte[] body = encodeBody(profile.getId(), profile.getName(), expiresAtMs, nonce, textures);
+            byte[] body = encodeBody(profile.id(), profile.name(), expiresAtMs, nonce, textures);
             if (body.length > MAX_BODY_WITH_TEXTURES && textures != null) {
-                body = encodeBody(profile.getId(), profile.getName(), expiresAtMs, nonce, null);
+                body = encodeBody(profile.id(), profile.name(), expiresAtMs, nonce, null);
             }
             byte[] mac = computeHmac(secret, body);
             byte[] token = new byte[body.length + mac.length];
@@ -77,7 +80,7 @@ public final class TransferAuthToken {
             }
             return token;
         } catch (IOException | GeneralSecurityException e) {
-            LOGGER.warn("Failed to issue transfer auth cookie for {}", profile.getName(), e);
+            LOGGER.warn("Failed to issue transfer auth cookie for {}", profile.name(), e);
             return null;
         }
     }
@@ -139,11 +142,12 @@ public final class TransferAuthToken {
                 return null;
             }
 
-            GameProfile profile = new GameProfile(playerId, username);
             if (hasTextures && texValue != null) {
-                profile.getProperties().put("textures", new Property("textures", texValue, texSig));
+                Multimap<String, Property> props = LinkedHashMultimap.create();
+                props.put("textures", new Property("textures", texValue, texSig));
+                return new GameProfile(playerId, username, new PropertyMap(props));
             }
-            return profile;
+            return new GameProfile(playerId, username);
         } catch (IOException e) {
             return null;
         }

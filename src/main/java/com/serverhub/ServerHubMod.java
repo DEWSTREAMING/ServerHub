@@ -4,9 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.command.HubCommands;
 import com.serverhub.config.HubConfig;
-import com.serverhub.handshake.ApothicEnchantingFallbackPayload;
 import com.serverhub.handshake.ClientModTracker;
-import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
@@ -16,11 +14,11 @@ import com.serverhub.transfer.TransferManager;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -93,7 +91,6 @@ public class ServerHubMod {
     public void onServerStarting(ServerStartingEvent event) {
         MinecraftServer server = event.getServer();
         HubConfig cfg = HubConfig.reload();
-        RegistryManifests.reload();
         ChatMuteManager.load();
         TransferManager.resetShutdownState();
         HubPortalManager.clearCooldownsForTesting();
@@ -163,7 +160,7 @@ public class ServerHubMod {
                 cfg.serverId,
                 cfg.serverDisplayName,
                 player.getUUID(),
-                player.getGameProfile().getName(),
+                player.getGameProfile().name(),
                 event.getRawText());
     }
 
@@ -175,21 +172,19 @@ public class ServerHubMod {
         if (!HubConfig.get().isHubRole()) {
             return;
         }
-        ServerLevel overworld = player.server.overworld();
+        MinecraftServer mcServer = player.level().getServer();
+        ServerLevel overworld = mcServer != null ? mcServer.overworld() : null;
         if (overworld != null) {
-            BlockPos spawn = overworld.getSharedSpawnPos();
+            BlockPos spawn = overworld.getRespawnData().pos();
             player.teleportTo(
                     overworld,
                     spawn.getX() + 0.5D,
                     spawn.getY(),
                     spawn.getZ() + 0.5D,
-                    overworld.getSharedSpawnAngle(),
-                    0.0F);
-        }
-        if (ClientModTracker.getClientMods(player.getUUID()).contains("apothic_enchanting")
-                && player.connection != null
-                && player.connection.hasChannel(ApothicEnchantingFallbackPayload.ID)) {
-            player.connection.send(new ClientboundCustomPayloadPacket(new ApothicEnchantingFallbackPayload()));
+                    Set.of(),
+                    overworld.getRespawnData().yaw(),
+                    0.0F,
+                    false);
         }
         Optional<String> originId = ClientModTracker.getOriginServer(player.getUUID());
         if (originId.isPresent()) {
