@@ -1,13 +1,18 @@
 package com.serverhub.mixin;
 
 import com.serverhub.config.HubConfig;
+import com.serverhub.network.BlockStateRemapper;
+import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Nullable;
+import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
 import net.minecraft.network.protocol.game.ClientboundRecipePacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
@@ -39,6 +44,17 @@ public abstract class ServerCommonPacketListenerMixin {
     protected MinecraftServer server;
 
     @Shadow
+    @Final
+    protected Connection connection;
+
+    @Unique
+    private boolean serverhub$blockRemapInitialized;
+
+    @Unique
+    @Nullable
+    private int[] serverhub$blockRemapTable;
+
+    @Shadow
     public abstract void send(Packet<?> packet, @Nullable PacketSendListener listener);
 
     @Inject(
@@ -56,7 +72,17 @@ public abstract class ServerCommonPacketListenerMixin {
             return;
         }
         if ((Object) this instanceof ServerGamePacketListenerImpl gameListener) {
-            Packet<?> sanitized = serverhub$sanitizeEntityDataPacket(gameListener, packet);
+            int[] remapTable = serverhub$ensureBlockRemapTable(gameListener);
+            if (packet instanceof ClientboundLevelChunkWithLightPacket chunkPacket
+                    && remapTable != null) {
+                ClientboundLevelChunkPacketDataMixin chunkData =
+                        (ClientboundLevelChunkPacketDataMixin) (Object) chunkPacket.getChunkData();
+                chunkData.serverhub$setBuffer(
+                        BlockStateRemapper.remapChunkDataBuffer(
+                                chunkData.serverhub$getBuffer(), remapTable));
+            }
+            Packet<?> sanitized =
+                    serverhub$rewritePlayPacket(gameListener, packet, remapTable);
             if (sanitized == null) {
                 ci.cancel();
             } else if (sanitized != packet) {
@@ -68,16 +94,49 @@ public abstract class ServerCommonPacketListenerMixin {
 
     @Unique
     @Nullable
-    private Packet<?> serverhub$sanitizeEntityDataPacket(
-            ServerGamePacketListenerImpl gameListener, Packet<?> packet) {
+    private int[] serverhub$ensureBlockRemapTable(ServerGamePacketListenerImpl gameListener) {
+        if (!this.serverhub$blockRemapInitialized && gameListener.player != null) {
+            this.serverhub$blockRemapInitialized = true;
+            this.serverhub$blockRemapTable =
+                    BlockStateRemapper.getRemapForPlayer(gameListener.player.getUUID());
+            Channel channel = this.connection != null ? this.connection.channel() : null;
+            if (channel != null && this.serverhub$blockRemapTable != null) {
+                channel.attr(BlockStateRemapper.CHANNEL_REMAP_KEY)
+                        .set(this.serverhub$blockRemapTable);
+            }
+        }
+        return this.serverhub$blockRemapTable;
+    }
+
+    @Unique
+    @Nullable
+    private Packet<?> serverhub$rewritePlayPacket(
+            ServerGamePacketListenerImpl gameListener,
+            Packet<?> packet,
+            @Nullable int[] remapTable) {
         if (packet instanceof ClientboundSetEntityDataPacket dataPacket) {
             return serverhub$filterEntityData(gameListener, dataPacket);
+        }
+        if (packet instanceof ClientboundLevelEventPacket levelEvent
+                && remapTable != null
+                && levelEvent.getType() == 2001) {
+            return new ClientboundLevelEventPacket(
+                    2001,
+                    levelEvent.getPos(),
+                    BlockStateRemapper.remapId(levelEvent.getData(), remapTable),
+                    levelEvent.isGlobalEvent());
         }
         if (packet instanceof ClientboundBundlePacket bundlePacket) {
             boolean needsSanitizing = false;
             for (Packet<? super ClientGamePacketListener> subPacket : bundlePacket.subPackets()) {
                 if (subPacket instanceof ClientboundSetEntityDataPacket dataPacket
                         && serverhub$filterEntityData(gameListener, dataPacket) != dataPacket) {
+                    needsSanitizing = true;
+                    break;
+                }
+                if (subPacket instanceof ClientboundLevelEventPacket levelEvent
+                        && remapTable != null
+                        && levelEvent.getType() == 2001) {
                     needsSanitizing = true;
                     break;
                 }
@@ -93,6 +152,15 @@ public abstract class ServerCommonPacketListenerMixin {
                     if (filtered != null) {
                         sanitized.add(filtered);
                     }
+                } else if (subPacket instanceof ClientboundLevelEventPacket levelEvent
+                        && remapTable != null
+                        && levelEvent.getType() == 2001) {
+                    sanitized.add(
+                            new ClientboundLevelEventPacket(
+                                    2001,
+                                    levelEvent.getPos(),
+                                    BlockStateRemapper.remapId(levelEvent.getData(), remapTable),
+                                    levelEvent.isGlobalEvent()));
                 } else {
                     sanitized.add(subPacket);
                 }

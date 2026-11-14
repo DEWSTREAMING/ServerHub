@@ -4,12 +4,14 @@ import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.network.BlockStateRemapper;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
 import com.serverhub.relay.RelayServer;
 import com.serverhub.relay.ServerStatusInfo;
+import io.netty.buffer.Unpooled;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,11 +21,16 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.VarInt;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -323,6 +330,102 @@ public class ServerHubGameTests {
             HubConfig.setForTesting(previousConfig);
             HubConfig.save();
         }
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void blockStateRemapperOffsetsAndChunkSections(GameTestHelper helper) {
+        helper.assertTrue(
+                BlockStateRemapper.getRemapTable(false, false) == null,
+                "Vanilla client should not require a block state remap table");
+
+        int[] table = BlockStateRemapper.getRemapTable(true, true);
+        helper.assertTrue(table != null, "Expected non-null remap table for cataclysm + amendments");
+
+        int andesiteId = Block.getId(Blocks.POLISHED_ANDESITE.defaultBlockState());
+        int iceId = Block.getId(Blocks.ICE.defaultBlockState());
+        int cauldronId = Block.getId(Blocks.WATER_CAULDRON.defaultBlockState());
+        int firstSkullId =
+                Block.getId(Blocks.SKELETON_SKULL.getStateDefinition().getPossibleStates().get(0));
+        int defaultSkullId = Block.getId(Blocks.SKELETON_SKULL.defaultBlockState());
+        int seaLanternId = Block.getId(Blocks.SEA_LANTERN.defaultBlockState());
+        int heavyCoreId = Block.getId(Blocks.HEAVY_CORE.defaultBlockState());
+
+        helper.assertTrue(
+                BlockStateRemapper.remapId(andesiteId, table) == andesiteId,
+                "Polished andesite before note_block should have 0 offset");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(iceId, table) == iceId + 150,
+                "Ice after note_block should shift by +150");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(cauldronId, table) == cauldronId + 153,
+                "Water cauldron default state should shift by +153");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(firstSkullId, table) == firstSkullId + 154,
+                "First skeleton skull state should shift by +154");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(defaultSkullId, table) == defaultSkullId + 170,
+                "Default skeleton skull state (powered=false, rotation=0) should shift by +170");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(seaLanternId, table) == seaLanternId + 377,
+                "Sea lantern after skull blocks should shift by +377");
+        helper.assertTrue(
+                BlockStateRemapper.remapId(heavyCoreId, table) == heavyCoreId + 377,
+                "Heavy core at end of registry should shift by +377");
+
+        // Verify IdMapperMixin remaps Block.getId during active encode scope and restores afterward.
+        try {
+            BlockStateRemapper.setActiveEncodeRemap(table);
+            helper.assertTrue(
+                    Block.getId(Blocks.SEA_LANTERN.defaultBlockState()) == seaLanternId + 377,
+                    "IdMapperMixin should return remapped sea_lantern ID while encode remap is active");
+        } finally {
+            BlockStateRemapper.clearActiveEncodeRemap();
+        }
+        helper.assertTrue(
+                Block.getId(Blocks.SEA_LANTERN.defaultBlockState()) == seaLanternId,
+                "Block.getId should return vanilla ID after clearing encode remap");
+
+        // Verify chunk section palette remapping for LinearPalette.
+        LevelChunkSection section = new LevelChunkSection(
+                helper.getLevel().registryAccess().registryOrThrow(Registries.BIOME));
+        section.setBlockState(0, 0, 0, Blocks.POLISHED_ANDESITE.defaultBlockState(), false);
+        section.setBlockState(1, 0, 0, Blocks.ICE.defaultBlockState(), false);
+        section.setBlockState(2, 0, 0, Blocks.SEA_LANTERN.defaultBlockState(), false);
+
+        FriendlyByteBuf rawBuf = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            section.write(rawBuf);
+            byte[] rawBytes = new byte[rawBuf.readableBytes()];
+            rawBuf.readBytes(rawBytes);
+
+            byte[] remappedBytes = BlockStateRemapper.remapChunkDataBuffer(rawBytes, table);
+            FriendlyByteBuf checkBuf = new FriendlyByteBuf(Unpooled.wrappedBuffer(remappedBytes));
+            try {
+                checkBuf.readShort(); // nonEmptyBlockCount
+                int bits = checkBuf.readUnsignedByte();
+                helper.assertTrue(bits == 4, "Expected LinearPalette with 4 bits, got " + bits);
+                int paletteSize = VarInt.read(checkBuf);
+                List<Integer> remappedPalette = new ArrayList<>();
+                for (int i = 0; i < paletteSize; i++) {
+                    remappedPalette.add(VarInt.read(checkBuf));
+                }
+                helper.assertTrue(
+                        remappedPalette.contains(andesiteId),
+                        "Remapped palette should contain unshifted polished_andesite ID");
+                helper.assertTrue(
+                        remappedPalette.contains(iceId + 150),
+                        "Remapped palette should contain shifted ice ID");
+                helper.assertTrue(
+                        remappedPalette.contains(seaLanternId + 377),
+                        "Remapped palette should contain shifted sea_lantern ID");
+            } finally {
+                checkBuf.release();
+            }
+        } finally {
+            rawBuf.release();
+        }
+
+        helper.succeed();
     }
 
     private static void waitUntil(BooleanSupplier condition, long timeoutMs, String failureMessage)

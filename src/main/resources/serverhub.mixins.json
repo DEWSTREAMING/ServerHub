@@ -9,6 +9,9 @@
     "ServerRecipeBookMixin",
     "ServerCommonPacketListenerMixin",
     "ServerConfigurationPacketListenerMixin",
+    "ClientboundLevelChunkPacketDataMixin",
+    "PacketEncoderMixin",
+    "IdMapperMixin",
     "MinecraftServerMixin",
     "DedicatedServerMixin"
   ],
