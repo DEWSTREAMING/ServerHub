@@ -77,6 +77,7 @@ SYNCED_MODDED_REGISTRIES = (
     ("forbidden_arcanus", "magic_circle"),
     ("forbidden_arcanus", "molten_material_type"),
     ("forbidden_arcanus", "wand/material"),
+    ("framedblocks", "block_overlay"),
     ("irons_jewelry", "material"),
     ("irons_jewelry", "part"),
     ("irons_jewelry", "pattern"),
