@@ -56,6 +56,9 @@ public class ServerConfigurationPacketListenerMixin {
         }
 
         Set<String> clientMods = ClientModTracker.getClientMods(this.gameProfile.getId());
+        if (!clientMods.contains("cobblemon") && !clientMods.contains("cataclysm")) {
+            return;
+        }
         ServerCommonPacketListenerImpl sender = (ServerCommonPacketListenerImpl) (Object) this;
 
         if (clientMods.contains("forbidden_arcanus")) {
