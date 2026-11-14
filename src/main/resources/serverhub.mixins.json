@@ -6,6 +6,7 @@
   "mixins": [
     "NetworkRegistryMixin",
     "ConfigurationInitializationMixin",
+    "ServerRecipeBookMixin",
     "MinecraftServerMixin",
     "DedicatedServerMixin"
   ],

@@ -32,6 +32,7 @@ public final class HubConfig {
     public String sharedSecret = "change-me-shared-secret";
     public boolean redirectToHubOnShutdown = true;
     public List<String> requiredModIds = new ArrayList<>();
+    public List<String> extraServerConfigs = new ArrayList<>();
     public List<PortalDefinition> portals = new ArrayList<>();
 
     public static HubConfig get() {
@@ -122,6 +123,9 @@ public final class HubConfig {
         }
         if (requiredModIds == null) {
             requiredModIds = new ArrayList<>();
+        }
+        if (extraServerConfigs == null) {
+            extraServerConfigs = new ArrayList<>();
         }
         if (portals == null) {
             portals = new ArrayList<>();
