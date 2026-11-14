@@ -2,6 +2,10 @@ package com.serverhub.mixin;
 
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.network.ConnectionProtocol;
@@ -24,11 +28,14 @@ import net.neoforged.neoforge.network.payload.ModdedNetworkQueryComponent;
 import net.neoforged.neoforge.network.payload.ModdedNetworkQueryPayload;
 import net.neoforged.neoforge.network.payload.ModdedNetworkSetupFailedPayload;
 import net.neoforged.neoforge.network.registration.ChannelAttributes;
+import net.neoforged.neoforge.network.registration.NetworkChannel;
 import net.neoforged.neoforge.network.registration.NetworkPayloadSetup;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import net.neoforged.neoforge.network.registration.PayloadRegistration;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -39,6 +46,10 @@ public abstract class NetworkRegistryMixin {
     @Shadow
     @Final
     private static Map<ResourceLocation, StreamCodec<FriendlyByteBuf, ? extends CustomPacketPayload>> BUILTIN_PAYLOADS;
+
+    @Shadow
+    @Final
+    private static Map<ConnectionProtocol, Map<ResourceLocation, PayloadRegistration<?>>> PAYLOAD_REGISTRATIONS;
 
     @Inject(
             method = "initializeNeoForgeConnection(Lnet/minecraft/network/protocol/configuration/ServerConfigurationPacketListener;Ljava/util/Map;)V",
@@ -55,18 +66,38 @@ public abstract class NetworkRegistryMixin {
         }
 
         if (HubConfig.get().isHubRole()) {
-            ChannelAttributes.setPayloadSetup(listener.getConnection(), NetworkPayloadSetup.empty());
+            // Accept NeoForge's own server channels (so SyncRegistries runs) plus all client channels.
+            Map<ConnectionProtocol, Map<ResourceLocation, NetworkChannel>> channels = new IdentityHashMap<>();
+            for (ConnectionProtocol protocol : ConnectionProtocol.values()) {
+                Map<ResourceLocation, NetworkChannel> protocolMap = new HashMap<>();
+                Map<ResourceLocation, PayloadRegistration<?>> serverRegs =
+                        PAYLOAD_REGISTRATIONS.getOrDefault(protocol, Collections.emptyMap());
+                serverRegs.forEach((id, reg) -> protocolMap.put(id, new NetworkChannel(id, reg.version())));
+                for (ModdedNetworkQueryComponent comp :
+                        clientChannels.getOrDefault(protocol, Collections.emptySet())) {
+                    protocolMap.putIfAbsent(comp.id(), new NetworkChannel(comp.id(), comp.version()));
+                }
+                if (!protocolMap.isEmpty()) {
+                    channels.put(protocol, Collections.unmodifiableMap(protocolMap));
+                }
+            }
+            NetworkPayloadSetup setup = new NetworkPayloadSetup(Collections.unmodifiableMap(channels));
+
+            ChannelAttributes.setPayloadSetup(listener.getConnection(), setup);
             ChannelAttributes.setConnectionType(listener.getConnection(), listener.getConnectionType());
             NetworkFilters.injectIfNecessary(listener.getConnection());
-            listener.send(new ModdedNetworkPayload(NetworkPayloadSetup.empty()));
-            listener.send(new MinecraftRegisterPayload(Set.of(
+            listener.send(new ModdedNetworkPayload(setup));
+
+            Set<ResourceLocation> listeningChannels = new HashSet<>(Set.of(
                     MinecraftRegisterPayload.ID,
                     MinecraftUnregisterPayload.ID,
                     ModdedNetworkQueryPayload.ID,
                     ModdedNetworkPayload.ID,
                     ModdedNetworkSetupFailedPayload.ID,
                     CommonVersionPayload.ID,
-                    CommonRegisterPayload.ID)));
+                    CommonRegisterPayload.ID));
+            listeningChannels.addAll(setup.getChannels(ConnectionProtocol.CONFIGURATION).keySet());
+            listener.send(new MinecraftRegisterPayload(Collections.unmodifiableSet(listeningChannels)));
             ci.cancel();
         }
     }
@@ -79,7 +110,8 @@ public abstract class NetworkRegistryMixin {
             ServerCommonPacketListener listener,
             ServerboundCustomPayloadPacket packet,
             CallbackInfo ci) {
-        if (HubConfig.get().isHubRole()) {
+        if (HubConfig.get().isHubRole()
+                && !serverhub$hasServerRegistration(listener.protocol(), packet.payload().type().id())) {
             ci.cancel();
         }
     }
@@ -96,9 +128,18 @@ public abstract class NetworkRegistryMixin {
         if (HubConfig.get().isHubRole()
                 && flow == PacketFlow.SERVERBOUND
                 && !BUILTIN_PAYLOADS.containsKey(id)
-                && !"minecraft".equals(id.getNamespace())) {
+                && !"minecraft".equals(id.getNamespace())
+                && !serverhub$hasServerRegistration(protocol, id)) {
             // Returning null makes CustomPacketPayload fall back to DiscardedPayload without disconnect warnings.
             cir.setReturnValue(null);
         }
+    }
+
+    @Unique
+    private static boolean serverhub$hasServerRegistration(ConnectionProtocol protocol, ResourceLocation id) {
+        if (protocol == null || id == null) {
+            return false;
+        }
+        return PAYLOAD_REGISTRATIONS.getOrDefault(protocol, Collections.emptyMap()).containsKey(id);
     }
 }
