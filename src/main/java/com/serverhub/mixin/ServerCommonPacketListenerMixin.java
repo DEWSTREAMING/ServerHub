@@ -1,16 +1,21 @@
 package com.serverhub.mixin;
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.logging.LogUtils;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.network.BlockStateRemapper;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
+import net.minecraft.core.Registry;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
@@ -19,10 +24,12 @@ import net.minecraft.network.protocol.game.ClientboundRecipePacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.tags.TagNetworkSerialization;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -79,6 +86,23 @@ public abstract class ServerCommonPacketListenerMixin {
                 || packet instanceof ClientboundRecipePacket) {
             ci.cancel();
             return;
+        }
+        if (packet instanceof ClientboundUpdateTagsPacket tagsPacket) {
+            GameProfile owner = ((ServerCommonPacketListenerImpl) (Object) this).getOwner();
+            RegistryManifests.Manifest manifest =
+                    owner != null ? RegistryManifests.forPlayer(owner.getId()) : null;
+            if (manifest != null) {
+                Map<ResourceKey<? extends Registry<?>>, TagNetworkSerialization.NetworkPayload>
+                        merged = RegistryManifests.mergeTags(tagsPacket.getTags(), manifest);
+                this.serverhub$sendingRewritten = true;
+                try {
+                    this.send(new ClientboundUpdateTagsPacket(merged), listener);
+                } finally {
+                    this.serverhub$sendingRewritten = false;
+                }
+                ci.cancel();
+                return;
+            }
         }
         if ((Object) this instanceof ServerGamePacketListenerImpl gameListener) {
             int[] remapTable = serverhub$ensureBlockRemapTable(gameListener);

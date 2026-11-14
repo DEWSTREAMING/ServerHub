@@ -1,12 +1,18 @@
 package com.serverhub.mixin;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.logging.LogUtils;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.RegistryManifests;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import net.minecraft.server.MinecraftServer;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
+import org.slf4j.Logger;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistrySynchronization;
 import net.minecraft.core.registries.Registries;
@@ -32,6 +38,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ServerConfigurationPacketListenerImpl.class)
 public class ServerConfigurationPacketListenerMixin {
     @Unique
+    private static final Logger SERVERHUB_LOGGER = LogUtils.getLogger();
+
+    @Unique
     private static final ResourceKey<Registry<Object>> FORBIDDEN_ARCANUS_ITEM_MODIFIER =
             ResourceKey.createRegistryKey(
                     ResourceLocation.fromNamespaceAndPath("forbidden_arcanus", "item_modifier"));
@@ -56,10 +65,32 @@ public class ServerConfigurationPacketListenerMixin {
         }
 
         Set<String> clientMods = ClientModTracker.getClientMods(this.gameProfile.getId());
+        ServerCommonPacketListenerImpl sender = (ServerCommonPacketListenerImpl) (Object) this;
+
+        RegistryManifests.Manifest manifest = RegistryManifests.match(clientMods);
+        if (manifest != null) {
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            Map<ResourceKey<Registry<Object>>, List<RegistrySynchronization.PackedRegistryEntry>> stubs =
+                    RegistryManifests.buildStubEntries(
+                            manifest, server != null ? server.registryAccess() : null);
+            int total = 0;
+            for (Map.Entry<ResourceKey<Registry<Object>>, List<RegistrySynchronization.PackedRegistryEntry>>
+                    entry : stubs.entrySet()) {
+                sender.send(new ClientboundRegistryDataPacket(entry.getKey(), entry.getValue()));
+                total += entry.getValue().size();
+            }
+            SERVERHUB_LOGGER.info(
+                    "Registry manifest '{}' applied for {}: {} stub entries across {} registries",
+                    manifest.packId,
+                    this.gameProfile.getName(),
+                    total,
+                    stubs.size());
+            return;
+        }
+
         if (!clientMods.contains("cobblemon") && !clientMods.contains("cataclysm")) {
             return;
         }
-        ServerCommonPacketListenerImpl sender = (ServerCommonPacketListenerImpl) (Object) this;
 
         if (clientMods.contains("forbidden_arcanus")) {
             List<RegistrySynchronization.PackedRegistryEntry> modifiers = new ArrayList<>();

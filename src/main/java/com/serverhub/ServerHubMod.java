@@ -6,6 +6,7 @@ import com.serverhub.command.HubCommands;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ApothicEnchantingFallbackPayload;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
@@ -92,6 +93,7 @@ public class ServerHubMod {
     public void onServerStarting(ServerStartingEvent event) {
         MinecraftServer server = event.getServer();
         HubConfig cfg = HubConfig.reload();
+        RegistryManifests.reload();
         ChatMuteManager.load();
         TransferManager.resetShutdownState();
         HubPortalManager.clearCooldownsForTesting();

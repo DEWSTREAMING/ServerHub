@@ -6,6 +6,7 @@ import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.network.BlockStateRemapper;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.portal.HubStructureGenerator;
@@ -472,6 +473,51 @@ public class ServerHubGameTests {
                     "Replayed transfer cookie must be rejected");
         } finally {
             cfg.sharedSecret = previousSecret;
+        }
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void registryManifestMatchStubsAndTagMerge(GameTestHelper helper) {
+        RegistryManifests.Manifest manifest = new RegistryManifests.Manifest();
+        manifest.packId = "test-atm11";
+        manifest.minecraftVersion = "26.1.2";
+        manifest.modIds = List.of("aether_ii", "forbidden_arcanus", "productivebees", "twilightforest", "undergarden");
+        manifest.registries.put(
+                "minecraft:jukebox_song", List.of("aether_ii:ascending_dawn", "minecraft:13"));
+        manifest.tags.put(
+                "minecraft:enchantment",
+                List.of("forbidden_arcanus:modifier/aquatic_incompatible"));
+        RegistryManifests.setForTesting(List.of(manifest));
+
+        try {
+            Set<String> clientMods = Set.of(
+                    "minecraft", "neoforge", "aether_ii", "forbidden_arcanus",
+                    "productivebees", "twilightforest", "undergarden");
+            RegistryManifests.Manifest matched = RegistryManifests.match(clientMods);
+            helper.assertTrue(matched != null && "test-atm11".equals(matched.packId), "Manifest should match client mods");
+
+            var stubs = RegistryManifests.buildStubEntries(matched, helper.getLevel().registryAccess());
+            var jukeboxKey = net.minecraft.resources.ResourceKey.<net.minecraft.core.Registry<Object>>createRegistryKey(
+                    net.minecraft.resources.ResourceLocation.withDefaultNamespace("jukebox_song"));
+            var jukeboxEntries = stubs.get(jukeboxKey);
+            helper.assertTrue(
+                    jukeboxEntries != null && jukeboxEntries.size() == 1
+                            && "aether_ii:ascending_dawn".equals(jukeboxEntries.get(0).id().toString()),
+                    "Stub entries should include modded song and skip vanilla minecraft:13");
+
+            var enchKey = net.minecraft.resources.ResourceKey.<net.minecraft.core.Registry<?>>createRegistryKey(
+                    net.minecraft.resources.ResourceLocation.withDefaultNamespace("enchantment"));
+            var merged = RegistryManifests.mergeTags(java.util.Map.of(), matched);
+            var enchPayload = merged.get(enchKey);
+            helper.assertTrue(enchPayload != null, "Merged tags should include minecraft:enchantment");
+            var decoded = RegistryManifests.decode(enchPayload);
+            helper.assertTrue(
+                    decoded.containsKey(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
+                            "forbidden_arcanus", "modifier/aquatic_incompatible")),
+                    "Merged tags should contain forbidden_arcanus tag");
+        } finally {
+            RegistryManifests.setForTesting(List.of());
         }
         helper.succeed();
     }

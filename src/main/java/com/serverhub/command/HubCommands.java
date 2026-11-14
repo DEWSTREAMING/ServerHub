@@ -12,6 +12,7 @@ import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.ServerStatusInfo;
 import com.serverhub.transfer.TransferManager;
@@ -264,6 +265,7 @@ public final class HubCommands {
 
     private static int cmdAdminReload(CommandContext<CommandSourceStack> ctx) {
         HubConfig.reload();
+        RegistryManifests.reload();
         ChatMuteManager.load();
         ctx.getSource().sendSuccess(
                 () -> Component.literal("Server Hub configuration reloaded.").withStyle(ChatFormatting.GREEN),
