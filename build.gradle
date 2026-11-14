@@ -1,0 +1,144 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.148'
+    id 'idea'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = mod_version
+group = mod_group_id
+
+sourceSets {
+    devtest {
+        java {
+            srcDirs = ['devtests']
+        }
+        resources.srcDirs = []
+    }
+}
+
+tasks.named('processDevtestResources') {
+    from('devtests') {
+        include '*.nbt'
+        into "data/${mod_id}/structure"
+    }
+}
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+        devtests {
+            sourceSet(sourceSets.main)
+            sourceSet(sourceSets.devtest)
+        }
+    }
+
+    runs {
+        client {
+            client()
+            loadedMods = [project.hasProperty('withDevtests') ? neoForge.mods.devtests : neoForge.mods."${mod_id}"]
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        server {
+            server()
+            loadedMods = [project.hasProperty('withDevtests') ? neoForge.mods.devtests : neoForge.mods."${mod_id}"]
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        gameTestServer {
+            type = "gameTestServer"
+            loadedMods = [neoForge.mods.devtests]
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+    devtestCompileOnly.extendsFrom compileOnly
+    devtestRuntimeClasspath.extendsFrom localRuntime
+}
+neoForge.addModdingDependenciesTo(sourceSets.devtest)
+
+dependencies {
+    devtestImplementation sourceSets.main.output
+}
+
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.named('jar') {
+    def jarFile = archiveFile
+    doLast {
+        def zip = new java.util.zip.ZipFile(jarFile.get().asFile)
+        def bad = zip.entries().collect { it.name }.findAll { it.contains('/devtest/') }
+        zip.close()
+        if (bad) throw new GradleException("Test files in the jar: ${bad.take(5)}")
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

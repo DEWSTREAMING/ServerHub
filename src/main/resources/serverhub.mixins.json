@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.serverhub.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "NetworkRegistryMixin",
+    "ConfigurationInitializationMixin",
+    "MinecraftServerMixin",
+    "DedicatedServerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
