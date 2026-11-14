@@ -74,17 +74,24 @@ public class ServerConfigurationPacketListenerMixin {
                     RegistryManifests.buildStubEntries(
                             manifest, server != null ? server.registryAccess() : null);
             int total = 0;
+            int sentRegistries = 0;
             for (Map.Entry<ResourceKey<Registry<Object>>, List<RegistrySynchronization.PackedRegistryEntry>>
                     entry : stubs.entrySet()) {
+                // Registries present on the Hub already have their stubs merged into
+                // SynchronizeRegistriesTask's single ClientboundRegistryDataPacket.
+                if (server != null && server.registryAccess().registry(entry.getKey()).isPresent()) {
+                    continue;
+                }
                 sender.send(new ClientboundRegistryDataPacket(entry.getKey(), entry.getValue()));
                 total += entry.getValue().size();
+                sentRegistries++;
             }
             SERVERHUB_LOGGER.info(
-                    "Registry manifest '{}' applied for {}: {} stub entries across {} registries",
+                    "Registry manifest '{}' applied for {}: {} extra-registry stubs across {} extra registries",
                     manifest.packId,
                     this.gameProfile.getName(),
                     total,
-                    stubs.size());
+                    sentRegistries);
             return;
         }
 

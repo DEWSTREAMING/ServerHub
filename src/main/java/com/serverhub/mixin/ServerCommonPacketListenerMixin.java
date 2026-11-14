@@ -12,10 +12,12 @@ import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
 import net.minecraft.core.Registry;
+import net.minecraft.core.RegistrySynchronization;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
+import net.minecraft.network.protocol.configuration.ClientboundRegistryDataPacket;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
@@ -86,6 +88,29 @@ public abstract class ServerCommonPacketListenerMixin {
                 || packet instanceof ClientboundRecipePacket) {
             ci.cancel();
             return;
+        }
+        if (packet instanceof ClientboundRegistryDataPacket registryPacket) {
+            GameProfile owner = ((ServerCommonPacketListenerImpl) (Object) this).getOwner();
+            RegistryManifests.Manifest manifest =
+                    owner != null ? RegistryManifests.forPlayer(owner.getId()) : null;
+            if (manifest != null) {
+                List<RegistrySynchronization.PackedRegistryEntry> merged =
+                        RegistryManifests.mergeRegistryEntries(
+                                registryPacket.registry(), registryPacket.entries(), manifest);
+                if (merged != registryPacket.entries()) {
+                    this.serverhub$sendingRewritten = true;
+                    try {
+                        this.send(
+                                new ClientboundRegistryDataPacket(
+                                        registryPacket.registry(), merged),
+                                listener);
+                    } finally {
+                        this.serverhub$sendingRewritten = false;
+                    }
+                    ci.cancel();
+                    return;
+                }
+            }
         }
         if (packet instanceof ClientboundUpdateTagsPacket tagsPacket) {
             GameProfile owner = ((ServerCommonPacketListenerImpl) (Object) this).getOwner();

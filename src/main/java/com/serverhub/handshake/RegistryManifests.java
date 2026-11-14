@@ -210,6 +210,38 @@ public final class RegistryManifests {
     }
 
     /**
+     * Merges stub entries from {@code manifest} into {@code originalEntries} for a registry packet
+     * already being sent by the Hub, returning {@code originalEntries} unchanged if nothing was
+     * added.
+     */
+    public static List<RegistrySynchronization.PackedRegistryEntry> mergeRegistryEntries(
+            ResourceKey<? extends Registry<?>> registryKey,
+            List<RegistrySynchronization.PackedRegistryEntry> originalEntries,
+            Manifest manifest) {
+        List<String> ids = manifest.registries.get(registryKey.location().toString());
+        if (ids == null || ids.isEmpty()) {
+            return originalEntries;
+        }
+        Set<ResourceLocation> seen = new HashSet<>(originalEntries.size() * 2);
+        for (RegistrySynchronization.PackedRegistryEntry entry : originalEntries) {
+            seen.add(entry.id());
+        }
+        List<RegistrySynchronization.PackedRegistryEntry> merged = null;
+        for (String id : ids) {
+            ResourceLocation location = ResourceLocation.tryParse(id);
+            if (location == null || !seen.add(location)) {
+                continue;
+            }
+            if (merged == null) {
+                merged = new ArrayList<>(originalEntries.size() + ids.size());
+                merged.addAll(originalEntries);
+            }
+            merged.add(new RegistrySynchronization.PackedRegistryEntry(location, Optional.empty()));
+        }
+        return merged != null ? merged : originalEntries;
+    }
+
+    /**
      * Builds empty-data stub entries for each manifest registry, skipping entries the Hub already
      * syncs itself.
      */
