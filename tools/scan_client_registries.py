@@ -143,9 +143,8 @@ def scan_instance(instance_dir: str, pack_id: str) -> dict:
                 for reg in SYNCED_MINECRAFT_REGISTRIES:
                     prefix = reg + "/"
                     if rel_after_ns.startswith(prefix):
-                        if ns != "minecraft":
-                            entry_name = rel_after_ns[len(prefix) : -len(".json")]
-                            registries[f"minecraft:{reg}"].add(f"{ns}:{entry_name}")
+                        entry_name = rel_after_ns[len(prefix) : -len(".json")]
+                        registries[f"minecraft:{reg}"].add(f"{ns}:{entry_name}")
                         break
 
     mc_version = detect_mc_version(instance_dir)
