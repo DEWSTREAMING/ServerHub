@@ -6,6 +6,7 @@ import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.network.BlockStateRemapper;
+import com.serverhub.network.CommandTreeSanitizer;
 import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +21,7 @@ import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
 import net.minecraft.network.protocol.configuration.ClientboundRegistryDataPacket;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
+import net.minecraft.network.protocol.game.ClientboundCommandsPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
 import net.minecraft.network.protocol.game.ClientboundRecipePacket;
@@ -192,6 +194,17 @@ public abstract class ServerCommonPacketListenerMixin {
             ServerGamePacketListenerImpl gameListener,
             Packet<?> packet,
             @Nullable int[] remapTable) {
+        if (packet instanceof ClientboundCommandsPacket && gameListener.player != null) {
+            RegistryManifests.Manifest manifest =
+                    RegistryManifests.forPlayer(gameListener.player.getUUID());
+            if (manifest != null
+                    && !manifest.minecraftVersion.isEmpty()
+                    && !"1.21.1".equals(manifest.minecraftVersion)) {
+                return CommandTreeSanitizer.buildSanitizedPacket(
+                        this.server.getCommands().getDispatcher().getRoot(),
+                        gameListener.player.createCommandSourceStack());
+            }
+        }
         if (packet instanceof ClientboundSetEntityDataPacket dataPacket) {
             return serverhub$filterEntityData(gameListener, dataPacket);
         }
