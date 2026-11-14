@@ -2,7 +2,9 @@ package com.serverhub.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -10,18 +12,23 @@ import com.serverhub.ServerHubMod;
 import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.ServerStatusInfo;
 import com.serverhub.transfer.TransferManager;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 
 public final class HubCommands {
@@ -31,8 +38,24 @@ public final class HubCommands {
     };
 
     private static final SuggestionProvider<CommandSourceStack> MUTE_SERVER_SUGGESTIONS = (ctx, builder) -> {
-        List<String> options = new java.util.ArrayList<>(ServerHubMod.getKnownServers().keySet());
+        List<String> options = new ArrayList<>(ServerHubMod.getKnownServers().keySet());
         options.add("all");
+        return SharedSuggestionProvider.suggest(options, builder);
+    };
+
+    private static final SuggestionProvider<CommandSourceStack> PORTAL_SUGGESTIONS = (ctx, builder) -> {
+        List<String> names = new ArrayList<>();
+        for (HubConfig.PortalDefinition portal : HubConfig.get().portals) {
+            if (portal.name != null && !portal.name.isBlank()) {
+                names.add(portal.name);
+            }
+        }
+        return SharedSuggestionProvider.suggest(names, builder);
+    };
+
+    private static final SuggestionProvider<CommandSourceStack> LINK_SERVER_SUGGESTIONS = (ctx, builder) -> {
+        List<String> options = new ArrayList<>(ServerHubMod.getKnownServers().keySet());
+        options.add("unlinked");
         return SharedSuggestionProvider.suggest(options, builder);
     };
 
@@ -66,6 +89,15 @@ public final class HubCommands {
         dispatcher.register(Commands.literal("hubadmin")
                 .requires(src -> src.hasPermission(2))
                 .then(Commands.literal("reload").executes(HubCommands::cmdAdminReload))
+                .then(Commands.literal("generatehub")
+                        .executes(HubCommands::cmdAdminGenerateHubHere)
+                        .then(Commands.argument("x", IntegerArgumentType.integer())
+                                .then(Commands.argument("y", IntegerArgumentType.integer())
+                                        .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                .executes(HubCommands::cmdAdminGenerateHubAt)))))
+                .then(buildLinkPortalNode("linkportal"))
+                .then(buildLinkPortalNode("setportal"))
+                .then(Commands.literal("listportals").executes(HubCommands::cmdAdminListPortals))
                 .then(Commands.literal("addportal")
                         .then(Commands.argument("name", StringArgumentType.word())
                                 .then(Commands.argument("targetServerId", StringArgumentType.word())
@@ -79,8 +111,18 @@ public final class HubCommands {
                                                                                         .executes(HubCommands::cmdAdminAddPortal))))))))))
                 .then(Commands.literal("removeportal")
                         .then(Commands.argument("name", StringArgumentType.word())
+                                .suggests(PORTAL_SUGGESTIONS)
                                 .executes(HubCommands::cmdAdminRemovePortal)))
                 .then(Commands.literal("restart").executes(HubCommands::cmdAdminRestart)));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildLinkPortalNode(String literal) {
+        return Commands.literal(literal)
+                .then(Commands.argument("name", StringArgumentType.word())
+                        .suggests(PORTAL_SUGGESTIONS)
+                        .then(Commands.argument("targetServerId", StringArgumentType.word())
+                                .suggests(LINK_SERVER_SUGGESTIONS)
+                                .executes(HubCommands::cmdAdminLinkPortal)));
     }
 
     private static int cmdHub(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
@@ -226,6 +268,92 @@ public final class HubCommands {
         ctx.getSource().sendSuccess(
                 () -> Component.literal("Server Hub configuration reloaded.").withStyle(ChatFormatting.GREEN),
                 true);
+        return 1;
+    }
+
+    private static int cmdAdminGenerateHubHere(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        ServerLevel level = src.getLevel();
+        BlockPos floorCenter = src.getEntity() != null
+                ? BlockPos.containing(src.getPosition()).below()
+                : level.getSharedSpawnPos().below();
+        return generateHubAt(src, level, floorCenter);
+    }
+
+    private static int cmdAdminGenerateHubAt(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        ServerLevel level = src.getLevel();
+        int x = IntegerArgumentType.getInteger(ctx, "x");
+        int y = IntegerArgumentType.getInteger(ctx, "y");
+        int z = IntegerArgumentType.getInteger(ctx, "z");
+        return generateHubAt(src, level, new BlockPos(x, y, z));
+    }
+
+    private static int generateHubAt(CommandSourceStack src, ServerLevel level, BlockPos floorCenter) {
+        List<HubConfig.PortalDefinition> portals = HubStructureGenerator.generateHub(level, floorCenter);
+        String portalNames = String.join(", ", HubStructureGenerator.PREMADE_PORTAL_NAMES);
+        src.sendSuccess(
+                () -> Component.literal("Generated Hub plaza at "
+                                + floorCenter.getX() + " " + floorCenter.getY() + " " + floorCenter.getZ()
+                                + " (" + portals.size() + " premade portals: " + portalNames
+                                + "). Spawn set to "
+                                + floorCenter.getX() + " " + (floorCenter.getY() + 1) + " " + floorCenter.getZ()
+                                + ". Link one with /hubadmin linkportal <name> <serverId>.")
+                        .withStyle(ChatFormatting.GREEN),
+                true);
+        return 1;
+    }
+
+    private static int cmdAdminLinkPortal(CommandContext<CommandSourceStack> ctx) {
+        String name = StringArgumentType.getString(ctx, "name");
+        String target = StringArgumentType.getString(ctx, "targetServerId");
+        boolean updated = HubStructureGenerator.linkPortal(ctx.getSource().getServer(), name, target);
+        if (!updated) {
+            ctx.getSource().sendFailure(Component.literal(
+                    "No portal found named '" + name + "'. Use /hubadmin listportals to see configured portals."));
+            return 0;
+        }
+        boolean unlinked = "unlinked".equalsIgnoreCase(target) || "none".equalsIgnoreCase(target);
+        ctx.getSource().sendSuccess(
+                () -> Component.literal(unlinked
+                                ? "Unlinked portal '" + name + "'."
+                                : "Linked portal '" + name + "' to server '" + target + "'.")
+                        .withStyle(unlinked ? ChatFormatting.YELLOW : ChatFormatting.GREEN),
+                true);
+        return 1;
+    }
+
+    private static int cmdAdminListPortals(CommandContext<CommandSourceStack> ctx) {
+        List<HubConfig.PortalDefinition> portals = HubConfig.get().portals;
+        if (portals == null || portals.isEmpty()) {
+            ctx.getSource().sendSuccess(
+                    () -> Component.literal("No portals configured. Run /hubadmin generatehub to create 4 premade portals.")
+                            .withStyle(ChatFormatting.YELLOW),
+                    false);
+            return 1;
+        }
+
+        ctx.getSource().sendSuccess(
+                () -> Component.literal("Configured Portals (" + portals.size() + "):").withStyle(ChatFormatting.GOLD),
+                false);
+        for (HubConfig.PortalDefinition portal : portals) {
+            boolean linked = portal.targetServerId != null && !portal.targetServerId.isBlank();
+            String target = linked ? portal.targetServerId : "UNLINKED";
+            String bounds = String.format(
+                    Locale.ROOT,
+                    "[%d, %d, %d to %d, %d, %d]",
+                    (int) Math.floor(Math.min(portal.minX, portal.maxX)),
+                    (int) Math.floor(Math.min(portal.minY, portal.maxY)),
+                    (int) Math.floor(Math.min(portal.minZ, portal.maxZ)),
+                    (int) Math.ceil(Math.max(portal.minX, portal.maxX)),
+                    (int) Math.ceil(Math.max(portal.minY, portal.maxY)),
+                    (int) Math.ceil(Math.max(portal.minZ, portal.maxZ)));
+            MutableComponent line = Component.literal("[" + portal.name + "] ")
+                    .withStyle(ChatFormatting.AQUA)
+                    .append(Component.literal(target).withStyle(linked ? ChatFormatting.GREEN : ChatFormatting.YELLOW))
+                    .append(Component.literal(" in " + portal.dimension + " " + bounds).withStyle(ChatFormatting.GRAY));
+            ctx.getSource().sendSuccess(() -> line, false);
+        }
         return 1;
     }
 

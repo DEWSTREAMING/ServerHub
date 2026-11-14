@@ -5,19 +5,25 @@ import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.portal.HubPortalManager;
+import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
 import com.serverhub.relay.RelayServer;
 import com.serverhub.relay.ServerStatusInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -259,6 +265,63 @@ public class ServerHubGameTests {
             helper.succeed();
         } finally {
             HubPortalManager.clearPlayer(player);
+        }
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void generateHubAndLinkPortal(GameTestHelper helper) {
+        HubConfig previousConfig = HubConfig.get();
+        List<HubConfig.PortalDefinition> previousPortals = new ArrayList<>(previousConfig.portals);
+        try {
+            HubConfig testCfg = new HubConfig();
+            testCfg.portals = new ArrayList<>();
+            HubConfig.setForTesting(testCfg);
+
+            BlockPos basePos = helper.absolutePos(new BlockPos(0, 2, 0));
+            List<HubConfig.PortalDefinition> generated =
+                    HubStructureGenerator.generateHub(helper.getLevel(), basePos);
+            helper.assertTrue(
+                    generated.size() == 4,
+                    "Expected 4 premade portals, got " + generated.size());
+            for (String expectedName : HubStructureGenerator.PREMADE_PORTAL_NAMES) {
+                boolean present = HubConfig.get().portals.stream()
+                        .anyMatch(p -> expectedName.equalsIgnoreCase(p.name));
+                helper.assertTrue(present, "Missing premade portal: " + expectedName);
+            }
+
+            helper.assertTrue(
+                    helper.getLevel().getBlockState(basePos).is(Blocks.SEA_LANTERN),
+                    "Hub center floor block should be a sea lantern");
+            helper.assertTrue(
+                    helper.getLevel().getBlockState(basePos.offset(0, 0, -12)).is(Blocks.CYAN_STAINED_GLASS),
+                    "North portal threshold should be cyan stained glass");
+
+            boolean linked = HubStructureGenerator.linkPortal(
+                    helper.getLevel().getServer(), "north", "holeydigsite");
+            helper.assertTrue(linked, "linkPortal should succeed for premade 'north' portal");
+
+            HubConfig.PortalDefinition northPortal = HubConfig.get().portals.stream()
+                    .filter(p -> "north".equalsIgnoreCase(p.name))
+                    .findFirst()
+                    .orElse(null);
+            helper.assertTrue(
+                    northPortal != null && "holeydigsite".equals(northPortal.targetServerId),
+                    "North portal targetServerId should update to holeydigsite");
+
+            BlockPos northSignPos = basePos.offset(0, 4, -11);
+            BlockEntity be = helper.getLevel().getBlockEntity(northSignPos);
+            helper.assertTrue(be instanceof SignBlockEntity, "Expected SignBlockEntity above north portal");
+            SignBlockEntity sign = (SignBlockEntity) be;
+            String signTarget = sign.getFrontText().getMessage(1, false).getString();
+            helper.assertTrue(
+                    signTarget.contains("holeydigsite"),
+                    "North portal sign line 1 should contain 'holeydigsite', got: " + signTarget);
+
+            helper.succeed();
+        } finally {
+            previousConfig.portals = previousPortals;
+            HubConfig.setForTesting(previousConfig);
+            HubConfig.save();
         }
     }
 

@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -49,7 +51,13 @@ public final class HubPortalManager {
             return;
         }
         List<HubConfig.PortalDefinition> portals = cfg.portals;
-        if (portals == null || portals.isEmpty() || server.getPlayerList() == null) {
+        if (portals == null || portals.isEmpty()) {
+            return;
+        }
+        if (tickCounter % 40 == 0) {
+            HubStructureGenerator.updatePortalSigns(server);
+        }
+        if (server.getPlayerList() == null) {
             return;
         }
 
@@ -63,7 +71,15 @@ public final class HubPortalManager {
             for (HubConfig.PortalDefinition portal : portals) {
                 if (portal.contains(dim, x, y, z)) {
                     if (tryConsumeCooldown(player.getUUID(), now)) {
-                        TransferManager.transferPlayerToServer(player, portal.targetServerId);
+                        if (portal.targetServerId == null || portal.targetServerId.isBlank()) {
+                            player.sendSystemMessage(Component.literal(
+                                            "Portal '" + portal.name
+                                                    + "' is not linked yet. Link it with /hubadmin linkportal "
+                                                    + portal.name + " <serverId>.")
+                                    .withStyle(ChatFormatting.YELLOW));
+                        } else {
+                            TransferManager.transferPlayerToServer(player, portal.targetServerId);
+                        }
                     }
                     break;
                 }
