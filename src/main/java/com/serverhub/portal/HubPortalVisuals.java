@@ -145,13 +145,8 @@ public final class HubPortalVisuals {
                 : Blocks.AIR.defaultBlockState();
 
         for (ServerPlayer player : level.players()) {
-            if (player.distanceToSqr(bounds.centerX, bounds.centerY, bounds.centerZ) > BLOCK_SYNC_RANGE_SQ) {
-                continue;
-            }
-            Map<String, Boolean> perPortal = SENT_GATEWAY_STATES.computeIfAbsent(
-                    player.getUUID(), ignored -> new ConcurrentHashMap<>());
-            Boolean previous = perPortal.get(portal.name);
-            if (previous != null && previous.booleanValue() == showGateway) {
+            if (player.tickCount < 20
+                    || player.distanceToSqr(bounds.centerX, bounds.centerY, bounds.centerZ) > BLOCK_SYNC_RANGE_SQ) {
                 continue;
             }
             if (interiorAir == null) {
@@ -160,7 +155,6 @@ public final class HubPortalVisuals {
             for (BlockPos pos : interiorAir) {
                 player.connection.send(new ClientboundBlockUpdatePacket(pos, targetState));
             }
-            perPortal.put(portal.name, showGateway);
         }
     }
 
@@ -186,7 +180,7 @@ public final class HubPortalVisuals {
             PortalBounds bounds,
             PortalVisualState state) {
         double holoX = bounds.centerX;
-        double holoY = bounds.maxBlockY + 0.85D;
+        double holoY = bounds.maxBlockY + 2.15D;
         double holoZ = bounds.centerZ;
         String portalTag = HOLOGRAM_PREFIX + portal.name;
 

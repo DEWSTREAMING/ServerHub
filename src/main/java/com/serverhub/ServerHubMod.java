@@ -212,7 +212,6 @@ public class ServerHubMod {
         if (!cfg.isHubRole()) {
             return;
         }
-        HubPortalVisuals.syncBlocksAndHolograms(player.server);
         ServerLevel overworld = player.server.overworld();
         if (overworld != null) {
             BlockPos spawn = overworld.getSharedSpawnPos();
