@@ -2,11 +2,8 @@ package com.serverhub.portal;
 
 import com.serverhub.ServerHubMod;
 import com.serverhub.config.HubConfig;
-import com.serverhub.mixin.DisplayAccessor;
-import com.serverhub.mixin.TextDisplayAccessor;
 import com.serverhub.relay.ServerStatusInfo;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -52,7 +50,7 @@ public final class HubPortalVisuals {
             new DustParticleOptions(new Vector3f(0.7F, 0.75F, 0.82F), 0.85F);
 
     private static final Map<UUID, Map<String, Boolean>> SENT_GATEWAY_STATES = new ConcurrentHashMap<>();
-    private static final Map<String, UUID> HOLOGRAM_IDS = new ConcurrentHashMap<>();
+    private static final Map<String, UUID[]> HOLOGRAM_IDS = new ConcurrentHashMap<>();
 
     private HubPortalVisuals() {}
 
@@ -187,69 +185,103 @@ public final class HubPortalVisuals {
             PortalBounds bounds,
             PortalVisualState state) {
         double holoX = bounds.centerX;
-        double holoY = bounds.maxBlockY + 2.15D;
+        double topY = bounds.maxBlockY + 2.55D;
+        double bottomY = topY - 0.28D;
         double holoZ = bounds.centerZ;
         String portalTag = HOLOGRAM_PREFIX + portal.name;
+        String topTag = portalTag + ":line1";
+        String bottomTag = portalTag + ":line2";
 
-        Display.TextDisplay display = findOrCleanupHologram(level, portal.name, portalTag, holoX, holoY, holoZ);
-        if (display == null) {
-            display = EntityType.TEXT_DISPLAY.create(level);
-            if (display == null) {
-                return;
-            }
-            display.setPos(holoX, holoY, holoZ);
-            display.addTag(HOLOGRAM_TAG);
-            display.addTag(portalTag);
-            display.setNoGravity(true);
-            display.setInvulnerable(true);
-            ((DisplayAccessor) display)
-                    .serverhub$setBillboardConstraints(Display.BillboardConstraints.CENTER);
-            ((TextDisplayAccessor) display).serverhub$setBackgroundColor(0x88000000);
-            ((TextDisplayAccessor) display).serverhub$setText(buildHologramText(portal, state));
-            level.addFreshEntity(display);
-        } else {
-            if (display.distanceToSqr(holoX, holoY, holoZ) > 0.01D) {
-                display.teleportTo(holoX, holoY, holoZ);
-            }
-            ((TextDisplayAccessor) display).serverhub$setText(buildHologramText(portal, state));
-        }
-
-        HOLOGRAM_IDS.put(portal.name, display.getUUID());
-    }
-
-    private static Display.TextDisplay findOrCleanupHologram(
-            ServerLevel level, String portalName, String portalTag, double x, double y, double z) {
-        UUID cachedId = HOLOGRAM_IDS.get(portalName);
-        if (cachedId != null) {
-            Entity existing = level.getEntity(cachedId);
-            if (existing instanceof Display.TextDisplay td && existing.isAlive()) {
-                return td;
-            }
-            HOLOGRAM_IDS.remove(portalName);
-        }
-
-        AABB searchBox = new AABB(x - 4.0D, y - 4.0D, z - 4.0D, x + 4.0D, y + 4.0D, z + 4.0D);
-        List<Display.TextDisplay> matches = level.getEntitiesOfClass(
+        // Remove any legacy TextDisplay holograms from earlier builds.
+        AABB searchBox = new AABB(
+                holoX - 4.0D, topY - 4.0D, holoZ - 4.0D,
+                holoX + 4.0D, topY + 4.0D, holoZ + 4.0D);
+        for (Display.TextDisplay legacy : level.getEntitiesOfClass(
                 Display.TextDisplay.class,
                 searchBox,
-                e -> e.getTags().contains(HOLOGRAM_TAG) && e.getTags().contains(portalTag));
-        Display.TextDisplay kept = null;
-        for (Display.TextDisplay match : matches) {
-            if (kept == null) {
-                kept = match;
-            } else {
-                match.discard();
-            }
+                e -> e.getTags().contains(HOLOGRAM_TAG) && e.getTags().contains(portalTag))) {
+            legacy.discard();
         }
-        return kept;
+
+        Component[] lines = buildHologramLines(portal, state);
+        UUID[] cached = HOLOGRAM_IDS.get(portal.name);
+        ArmorStand top = ensureHologramLine(
+                level, cached != null ? cached[0] : null, searchBox, portalTag, topTag, holoX, topY, holoZ, lines[0]);
+        ArmorStand bottom = ensureHologramLine(
+                level, cached != null ? cached[1] : null, searchBox, portalTag, bottomTag, holoX, bottomY, holoZ, lines[1]);
+        if (top != null && bottom != null) {
+            HOLOGRAM_IDS.put(portal.name, new UUID[] {top.getUUID(), bottom.getUUID()});
+        }
     }
 
-    private static Component buildHologramText(
+    private static ArmorStand ensureHologramLine(
+            ServerLevel level,
+            UUID cachedId,
+            AABB searchBox,
+            String portalTag,
+            String lineTag,
+            double x,
+            double y,
+            double z,
+            Component text) {
+        ArmorStand stand = null;
+        if (cachedId != null) {
+            Entity existing = level.getEntity(cachedId);
+            if (existing instanceof ArmorStand as && existing.isAlive()) {
+                stand = as;
+            }
+        }
+        if (stand == null) {
+            List<ArmorStand> matches = level.getEntitiesOfClass(
+                    ArmorStand.class,
+                    searchBox,
+                    e -> e.getTags().contains(HOLOGRAM_TAG)
+                            && e.getTags().contains(portalTag)
+                            && e.getTags().contains(lineTag));
+            for (ArmorStand match : matches) {
+                if (stand == null) {
+                    stand = match;
+                } else {
+                    match.discard();
+                }
+            }
+        }
+        if (stand == null) {
+            stand = EntityType.ARMOR_STAND.create(level);
+            if (stand == null) {
+                return null;
+            }
+            stand.setPos(x, y, z);
+            stand.addTag(HOLOGRAM_TAG);
+            stand.addTag(portalTag);
+            stand.addTag(lineTag);
+            stand.setInvisible(true);
+            stand.getEntityData().set(ArmorStand.DATA_CLIENT_FLAGS, (byte) 0x10);
+            stand.setNoGravity(true);
+            stand.setInvulnerable(true);
+            stand.setSilent(true);
+            stand.setCustomName(text);
+            stand.setCustomNameVisible(true);
+            level.addFreshEntity(stand);
+        } else {
+            if (stand.distanceToSqr(x, y, z) > 0.01D) {
+                stand.teleportTo(x, y, z);
+            }
+            if (!text.equals(stand.getCustomName())) {
+                stand.setCustomName(text);
+            }
+            stand.setCustomNameVisible(true);
+        }
+        return stand;
+    }
+
+    private static Component[] buildHologramLines(
             HubConfig.PortalDefinition portal, PortalVisualState state) {
         if (state == PortalVisualState.UNLINKED) {
-            return Component.literal("[" + portal.name + "]\n")
-                    .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD)
-                    .append(Component.literal("Unlinked Portal").withStyle(ChatFormatting.GRAY));
+            return new Component[] {
+                Component.literal("[" + portal.name + "]").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD),
+                Component.literal("Unlinked Portal").withStyle(ChatFormatting.GRAY)
+            };
         }
 
         ServerStatusInfo info = ServerHubMod.getServerStatus(portal.targetServerId);
@@ -258,11 +290,12 @@ public final class HubPortalVisuals {
                 : portal.targetServerId;
 
         if (info != null && info.isOnline()) {
-            return Component.literal(name + "\n")
-                    .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD)
-                    .append(Component.literal("ONLINE ").withStyle(ChatFormatting.GREEN))
-                    .append(Component.literal(info.onlinePlayers() + "/" + info.maxPlayers())
-                            .withStyle(ChatFormatting.WHITE));
+            return new Component[] {
+                Component.literal(name).withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD),
+                Component.literal("ONLINE ").withStyle(ChatFormatting.GREEN)
+                        .append(Component.literal(info.onlinePlayers() + "/" + info.maxPlayers())
+                                .withStyle(ChatFormatting.WHITE))
+            };
         }
 
         String statusLabel = (info != null && "RESTARTING".equalsIgnoreCase(info.status()))
@@ -272,9 +305,10 @@ public final class HubPortalVisuals {
                 ? ChatFormatting.YELLOW
                 : ChatFormatting.RED;
 
-        return Component.literal(name + "\n")
-                .withStyle(ChatFormatting.GRAY, ChatFormatting.BOLD)
-                .append(Component.literal(statusLabel).withStyle(statusColor));
+        return new Component[] {
+            Component.literal(name).withStyle(ChatFormatting.GRAY, ChatFormatting.BOLD),
+            Component.literal(statusLabel).withStyle(statusColor)
+        };
     }
 
     private static PortalVisualState resolveState(HubConfig.PortalDefinition portal) {

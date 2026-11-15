@@ -14,9 +14,7 @@
     "IdMapperMixin",
     "MinecraftServerMixin",
     "DedicatedServerMixin",
-    "ServerLoginPacketListenerMixin",
-    "DisplayAccessor",
-    "TextDisplayAccessor"
+    "ServerLoginPacketListenerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
