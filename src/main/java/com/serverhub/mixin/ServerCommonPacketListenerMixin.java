@@ -195,15 +195,9 @@ public abstract class ServerCommonPacketListenerMixin {
             Packet<?> packet,
             @Nullable int[] remapTable) {
         if (packet instanceof ClientboundCommandsPacket && gameListener.player != null) {
-            RegistryManifests.Manifest manifest =
-                    RegistryManifests.forPlayer(gameListener.player.getUUID());
-            if (manifest != null
-                    && !manifest.minecraftVersion.isEmpty()
-                    && !"1.21.1".equals(manifest.minecraftVersion)) {
-                return CommandTreeSanitizer.buildSanitizedPacket(
-                        this.server.getCommands().getDispatcher().getRoot(),
-                        gameListener.player.createCommandSourceStack());
-            }
+            return CommandTreeSanitizer.buildSanitizedPacket(
+                    this.server.getCommands().getDispatcher().getRoot(),
+                    gameListener.player.createCommandSourceStack());
         }
         if (packet instanceof ClientboundSetEntityDataPacket dataPacket) {
             return serverhub$filterEntityData(gameListener, dataPacket);
