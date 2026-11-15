@@ -13,6 +13,7 @@ import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.handshake.RegistryManifests;
+import com.serverhub.portal.HubPortalVisuals;
 import com.serverhub.portal.HubStructureGenerator;
 import com.serverhub.relay.ServerStatusInfo;
 import com.serverhub.transfer.TransferManager;
@@ -288,6 +289,8 @@ public final class HubCommands {
         HubConfig.reload();
         RegistryManifests.reload();
         ChatMuteManager.load();
+        HubPortalVisuals.clearAll();
+        HubPortalVisuals.syncBlocksAndHolograms(ctx.getSource().getServer());
         ctx.getSource().sendSuccess(
                 () -> Component.literal("Server Hub configuration reloaded.").withStyle(ChatFormatting.GREEN),
                 true);
@@ -337,6 +340,8 @@ public final class HubCommands {
             return 0;
         }
         boolean unlinked = "unlinked".equalsIgnoreCase(target) || "none".equalsIgnoreCase(target);
+        HubPortalVisuals.clearAll();
+        HubPortalVisuals.syncBlocksAndHolograms(ctx.getSource().getServer());
         ctx.getSource().sendSuccess(
                 () -> Component.literal(unlinked
                                 ? "Unlinked portal '" + name + "'."

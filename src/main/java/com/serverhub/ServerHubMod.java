@@ -9,6 +9,7 @@ import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.handshake.ManifestExporter;
 import com.serverhub.handshake.RegistryManifests;
 import com.serverhub.portal.HubPortalManager;
+import com.serverhub.portal.HubPortalVisuals;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
 import com.serverhub.relay.RelayServer;
@@ -211,6 +212,7 @@ public class ServerHubMod {
         if (!cfg.isHubRole()) {
             return;
         }
+        HubPortalVisuals.syncBlocksAndHolograms(player.server);
         ServerLevel overworld = player.server.overworld();
         if (overworld != null) {
             BlockPos spawn = overworld.getSharedSpawnPos();

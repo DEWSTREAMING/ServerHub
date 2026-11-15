@@ -22,6 +22,7 @@ public final class HubPortalManager {
     public static void clearCooldownsForTesting() {
         PORTAL_COOLDOWNS.clear();
         tickCounter = 0;
+        HubPortalVisuals.clearAll();
     }
 
     public static boolean tryConsumeCooldown(UUID playerUuid, long nowMillis) {
@@ -39,6 +40,7 @@ public final class HubPortalManager {
     public static void clearPlayer(UUID playerUuid) {
         if (playerUuid != null) {
             PORTAL_COOLDOWNS.remove(playerUuid);
+            HubPortalVisuals.clearPlayer(playerUuid);
         }
     }
 
@@ -47,15 +49,20 @@ public final class HubPortalManager {
         if (!cfg.isHubRole()) {
             return;
         }
-        if (++tickCounter % 10 != 0) {
-            return;
-        }
+        tickCounter++;
         List<HubConfig.PortalDefinition> portals = cfg.portals;
         if (portals == null || portals.isEmpty()) {
             return;
         }
+        if (tickCounter % 4 == 0) {
+            HubPortalVisuals.spawnParticles(server, tickCounter);
+        }
         if (tickCounter % 40 == 0) {
             HubStructureGenerator.updatePortalSigns(server);
+            HubPortalVisuals.syncBlocksAndHolograms(server);
+        }
+        if (tickCounter % 10 != 0) {
+            return;
         }
         if (server.getPlayerList() == null) {
             return;
