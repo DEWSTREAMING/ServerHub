@@ -40,7 +40,9 @@ public final class RelayClient {
 
     private volatile Supplier<ServerStatusInfo> heartbeatSupplier;
     private volatile BiConsumer<ServerStatusInfo, String> statusChangeListener;
+    private volatile Runnable statusSnapshotListener;
     private volatile Consumer<RelayMessage> chatListener;
+    private volatile Consumer<RelayMessage> presenceListener;
     private volatile BiConsumer<UUID, String> playerOriginListener;
     private volatile Supplier<String> manifestSupplier;
 
@@ -58,8 +60,16 @@ public final class RelayClient {
         this.statusChangeListener = listener;
     }
 
+    public void setStatusSnapshotListener(Runnable listener) {
+        this.statusSnapshotListener = listener;
+    }
+
     public void setChatListener(Consumer<RelayMessage> listener) {
         this.chatListener = listener;
+    }
+
+    public void setPresenceListener(Consumer<RelayMessage> listener) {
+        this.presenceListener = listener;
     }
 
     public void setPlayerOriginListener(BiConsumer<UUID, String> listener) {
@@ -141,6 +151,20 @@ public final class RelayClient {
                 senderUuid != null ? senderUuid.toString() : "",
                 senderName,
                 chatMessage));
+    }
+
+    public boolean sendPlayerPresence(
+            String sourceServerId,
+            String sourceDisplayName,
+            UUID playerUuid,
+            String playerName,
+            boolean joined) {
+        return sendMessage(RelayMessage.playerPresence(
+                sourceServerId,
+                sourceDisplayName,
+                playerUuid != null ? playerUuid.toString() : "",
+                playerName,
+                joined));
     }
 
     public boolean sendPlayerOrigin(UUID playerUuid, String originServerId) {
@@ -272,9 +296,19 @@ public final class RelayClient {
                         }
                     }
                 }
+                Runnable snapshotListener = this.statusSnapshotListener;
+                if (snapshotListener != null) {
+                    snapshotListener.run();
+                }
             }
             case RelayMessage.TYPE_CHAT -> {
                 Consumer<RelayMessage> listener = this.chatListener;
+                if (listener != null) {
+                    listener.accept(msg);
+                }
+            }
+            case RelayMessage.TYPE_PLAYER_PRESENCE -> {
+                Consumer<RelayMessage> listener = this.presenceListener;
                 if (listener != null) {
                     listener.accept(msg);
                 }

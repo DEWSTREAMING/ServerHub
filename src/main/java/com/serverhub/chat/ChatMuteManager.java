@@ -68,7 +68,7 @@ public final class ChatMuteManager {
         Map<String, PlayerMuteSettings> out = new HashMap<>();
         for (Map.Entry<UUID, PlayerMuteSettings> entry : SETTINGS.entrySet()) {
             PlayerMuteSettings s = entry.getValue();
-            if (s.localOnly || !s.mutedServers.isEmpty()) {
+            if (s.localOnly || s.hideJoinLeave || !s.mutedServers.isEmpty()) {
                 out.put(entry.getKey().toString(), s);
             }
         }
@@ -114,6 +114,22 @@ public final class ChatMuteManager {
         return true;
     }
 
+    public static boolean shouldReceiveJoinLeave(
+            UUID receiverUuid, String receiverServerId, String sourceServerId) {
+        if (!shouldReceiveChat(receiverUuid, receiverServerId, sourceServerId)) {
+            return false;
+        }
+        PlayerMuteSettings settings = SETTINGS.get(receiverUuid);
+        return settings == null || !settings.hideJoinLeave;
+    }
+
+    public static void setHideJoinLeave(UUID playerUuid, boolean hideJoinLeave) {
+        ensureLoaded();
+        PlayerMuteSettings settings = SETTINGS.computeIfAbsent(playerUuid, ignored -> new PlayerMuteSettings());
+        settings.hideJoinLeave = hideJoinLeave;
+        save();
+    }
+
     public static void setLocalOnly(UUID playerUuid, boolean localOnly) {
         ensureLoaded();
         PlayerMuteSettings settings = SETTINGS.computeIfAbsent(playerUuid, ignored -> new PlayerMuteSettings());
@@ -150,8 +166,15 @@ public final class ChatMuteManager {
 
     public static void clearMutes(UUID playerUuid) {
         ensureLoaded();
-        SETTINGS.remove(playerUuid);
-        save();
+        PlayerMuteSettings settings = SETTINGS.get(playerUuid);
+        if (settings != null) {
+            settings.localOnly = false;
+            settings.mutedServers.clear();
+            if (!settings.hideJoinLeave) {
+                SETTINGS.remove(playerUuid);
+            }
+            save();
+        }
     }
 
     public static PlayerMuteSettings getSettings(UUID playerUuid) {
@@ -165,6 +188,7 @@ public final class ChatMuteManager {
 
     public static final class PlayerMuteSettings {
         public boolean localOnly = false;
+        public boolean hideJoinLeave = false;
         public Set<String> mutedServers = new HashSet<>();
 
         public PlayerMuteSettings() {}
@@ -186,6 +210,7 @@ public final class ChatMuteManager {
         public PlayerMuteSettings copy() {
             PlayerMuteSettings copy = new PlayerMuteSettings();
             copy.localOnly = this.localOnly;
+            copy.hideJoinLeave = this.hideJoinLeave;
             copy.mutedServers = new HashSet<>(this.mutedServers);
             return copy;
         }

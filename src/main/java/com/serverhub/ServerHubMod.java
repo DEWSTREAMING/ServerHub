@@ -15,13 +15,18 @@ import com.serverhub.relay.RelayServer;
 import com.serverhub.relay.ServerStatusInfo;
 import com.serverhub.transfer.TransferManager;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.game.ClientboundTabListPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -115,7 +120,9 @@ public class ServerHubMod {
         RelayClient rc = new RelayClient(cfg.relayHost, cfg.relayPort, cfg.sharedSecret);
         rc.setHeartbeatSupplier(() -> buildLocalStatus(server, "ONLINE"));
         rc.setStatusChangeListener((info, prevStatus) -> server.execute(() -> handleStatusTransition(server, info, prevStatus)));
+        rc.setStatusSnapshotListener(() -> server.execute(() -> updateTabListForAll(server, null, false)));
         rc.setChatListener(msg -> server.execute(() -> deliverCrossServerChat(server, msg)));
+        rc.setPresenceListener(msg -> server.execute(() -> deliverCrossServerPresence(server, msg)));
         rc.start();
         relayClient = rc;
     }
@@ -181,12 +188,27 @@ public class ServerHubMod {
                 event.getRawText());
     }
 
+    private static String lastTabSignature = "";
+
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        if (!HubConfig.get().isHubRole()) {
+        HubConfig cfg = HubConfig.get();
+        RelayClient rc = relayClient;
+        if (rc != null) {
+            rc.sendPlayerPresence(
+                    cfg.serverId,
+                    cfg.serverDisplayName,
+                    player.getUUID(),
+                    player.getGameProfile().getName(),
+                    true);
+            rc.sendHeartbeat(buildLocalStatus(player.server, "ONLINE"));
+        }
+        updateTabListForAll(player.server, null, true);
+
+        if (!cfg.isHubRole()) {
             return;
         }
         ServerLevel overworld = player.server.overworld();
@@ -221,6 +243,30 @@ public class ServerHubMod {
         UUID uuid = event.getEntity().getUUID();
         ClientModTracker.clearPlayer(uuid);
         HubPortalManager.clearPlayer(uuid);
+        if (event.getEntity() instanceof ServerPlayer player) {
+            HubConfig cfg = HubConfig.get();
+            RelayClient rc = relayClient;
+            if (rc != null) {
+                rc.sendPlayerPresence(
+                        cfg.serverId,
+                        cfg.serverDisplayName,
+                        uuid,
+                        player.getGameProfile().getName(),
+                        false);
+                int remaining = Math.max(0, player.server.getPlayerCount() - 1);
+                rc.sendHeartbeat(new ServerStatusInfo(
+                        cfg.serverId,
+                        cfg.serverDisplayName,
+                        cfg.publicHost,
+                        cfg.publicPort,
+                        "ONLINE",
+                        remaining,
+                        player.server.getMaxPlayers(),
+                        cfg.requiredModIds,
+                        System.currentTimeMillis()));
+            }
+            updateTabListForAll(player.server, uuid, true);
+        }
     }
 
     private void handleStatusTransition(MinecraftServer server, ServerStatusInfo info, String previousStatus) {
@@ -267,6 +313,120 @@ public class ServerHubMod {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (ChatMuteManager.shouldReceiveChat(player.getUUID(), localServerId, msg.sourceServerId)) {
                 player.sendSystemMessage(formatted);
+            }
+        }
+    }
+
+    private void deliverCrossServerPresence(MinecraftServer server, RelayMessage msg) {
+        if (server.getPlayerList() == null || msg.senderName == null || msg.senderName.isBlank()) {
+            return;
+        }
+        String localServerId = HubConfig.get().serverId;
+        if (localServerId.equalsIgnoreCase(msg.sourceServerId)) {
+            return;
+        }
+        String display = (msg.sourceDisplayName != null && !msg.sourceDisplayName.isBlank())
+                ? msg.sourceDisplayName
+                : msg.sourceServerId;
+        String action = msg.joined ? " joined" : " left";
+
+        Component formatted = Component.literal("[" + display + "] ")
+                .withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(msg.senderName + action).withStyle(ChatFormatting.YELLOW));
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (ChatMuteManager.shouldReceiveJoinLeave(player.getUUID(), localServerId, msg.sourceServerId)) {
+                player.sendSystemMessage(formatted);
+            }
+        }
+    }
+
+    private void updateTabListForAll(
+            MinecraftServer server, UUID excludingUuid, boolean force) {
+        if (server == null || server.getPlayerList() == null) {
+            return;
+        }
+        List<ServerPlayer> players = server.getPlayerList().getPlayers();
+        if (players.isEmpty()) {
+            return;
+        }
+
+        HubConfig cfg = HubConfig.get();
+        List<ServerStatusInfo> servers = new ArrayList<>(getKnownServers().values());
+        int localCount = server.getPlayerCount();
+        if (excludingUuid != null) {
+            localCount = Math.max(0, localCount - 1);
+        }
+        boolean hasLocal = false;
+        for (int i = 0; i < servers.size(); i++) {
+            ServerStatusInfo s = servers.get(i);
+            if (s.serverId().equalsIgnoreCase(cfg.serverId)) {
+                servers.set(i, new ServerStatusInfo(
+                        s.serverId(),
+                        cfg.serverDisplayName,
+                        s.host(),
+                        s.port(),
+                        "ONLINE",
+                        localCount,
+                        server.getMaxPlayers(),
+                        s.requiredMods(),
+                        System.currentTimeMillis()));
+                hasLocal = true;
+                break;
+            }
+        }
+        if (!hasLocal) {
+            servers.add(new ServerStatusInfo(
+                    cfg.serverId,
+                    cfg.serverDisplayName,
+                    cfg.publicHost,
+                    cfg.publicPort,
+                    "ONLINE",
+                    localCount,
+                    server.getMaxPlayers(),
+                    cfg.requiredModIds,
+                    System.currentTimeMillis()));
+        }
+
+        servers.sort(Comparator.comparing((ServerStatusInfo s) -> !s.serverId().equalsIgnoreCase("hub"))
+                .thenComparing(ServerStatusInfo::displayName, String.CASE_INSENSITIVE_ORDER));
+
+        StringBuilder sig = new StringBuilder();
+        MutableComponent footer = Component.empty();
+        for (int i = 0; i < servers.size(); i++) {
+            ServerStatusInfo s = servers.get(i);
+            if (i > 0) {
+                footer.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY));
+                sig.append('|');
+            }
+            boolean online = s.isOnline();
+            footer.append(Component.literal(s.displayName() + ": ")
+                    .withStyle(online ? ChatFormatting.GRAY : ChatFormatting.DARK_GRAY));
+            if (online) {
+                ChatFormatting countColor = s.onlinePlayers() > 0 ? ChatFormatting.GREEN : ChatFormatting.WHITE;
+                footer.append(Component.literal(s.onlinePlayers() + "/" + s.maxPlayers())
+                        .withStyle(countColor));
+                sig.append(s.serverId()).append(':').append(s.onlinePlayers()).append('/').append(s.maxPlayers());
+            } else {
+                footer.append(Component.literal("Offline").withStyle(ChatFormatting.RED));
+                sig.append(s.serverId()).append(":OFF");
+            }
+        }
+
+        String signature = sig.toString();
+        if (!force && signature.equals(lastTabSignature)) {
+            return;
+        }
+        lastTabSignature = signature;
+
+        Component header = Component.literal("Linked Servers").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD);
+        ClientboundTabListPacket packet = new ClientboundTabListPacket(header, footer);
+        for (ServerPlayer player : players) {
+            if (excludingUuid != null && excludingUuid.equals(player.getUUID())) {
+                continue;
+            }
+            if (player.connection != null) {
+                player.connection.send(packet);
             }
         }
     }

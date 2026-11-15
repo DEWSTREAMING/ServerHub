@@ -230,7 +230,9 @@ public final class RelayServer {
                     statuses.put(stamped.serverId(), stamped);
                     broadcastSnapshot();
                 }
-                case RelayMessage.TYPE_CHAT, RelayMessage.TYPE_PLAYER_ORIGIN -> broadcastToOthers(this, rawJson);
+                case RelayMessage.TYPE_CHAT,
+                        RelayMessage.TYPE_PLAYER_ORIGIN,
+                        RelayMessage.TYPE_PLAYER_PRESENCE -> broadcastToOthers(this, rawJson);
                 case RelayMessage.TYPE_REGISTRY_MANIFEST -> {
                     Consumer<String> listener = manifestListener;
                     if (listener != null && msg.manifestJson != null && !msg.manifestJson.isBlank()) {

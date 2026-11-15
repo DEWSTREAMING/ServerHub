@@ -85,6 +85,9 @@ public final class HubCommands {
                         .then(Commands.argument("serverId", StringArgumentType.word())
                                 .suggests(MUTE_SERVER_SUGGESTIONS)
                                 .executes(HubCommands::cmdUnmute)))
+                .then(Commands.literal("joinleave")
+                        .then(Commands.literal("on").executes(ctx -> setJoinLeave(ctx, true)))
+                        .then(Commands.literal("off").executes(ctx -> setJoinLeave(ctx, false))))
                 .then(Commands.literal("status").executes(HubCommands::cmdChatStatus)));
 
         dispatcher.register(Commands.literal("hubadmin")
@@ -240,6 +243,19 @@ public final class HubCommands {
         return 1;
     }
 
+    private static int setJoinLeave(CommandContext<CommandSourceStack> ctx, boolean enabled)
+            throws CommandSyntaxException {
+        ServerPlayer player = ctx.getSource().getPlayerOrException();
+        ChatMuteManager.setHideJoinLeave(player.getUUID(), !enabled);
+        ctx.getSource().sendSuccess(
+                () -> Component.literal(enabled
+                                ? "Cross-server join/leave messages enabled."
+                                : "Cross-server join/leave messages disabled.")
+                        .withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.YELLOW),
+                false);
+        return 1;
+    }
+
     private static int cmdChatStatus(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         ChatMuteManager.PlayerMuteSettings settings = ChatMuteManager.getSettings(player.getUUID());
@@ -260,6 +276,11 @@ public final class HubCommands {
                             .withStyle(ChatFormatting.AQUA),
                     false);
         }
+        ctx.getSource().sendSuccess(
+                () -> Component.literal("Cross-server join/leave messages: "
+                                + (settings.hideJoinLeave ? "disabled" : "enabled"))
+                        .withStyle(settings.hideJoinLeave ? ChatFormatting.YELLOW : ChatFormatting.GREEN),
+                false);
         return 1;
     }
 
