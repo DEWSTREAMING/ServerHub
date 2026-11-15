@@ -280,10 +280,13 @@ public final class RegistryManifests {
         for (RegistrySynchronization.PackedRegistryEntry entry : originalEntries) {
             seen.add(entry.id());
         }
+        boolean skipVanillaEntries = isCrossVersion(manifest);
         List<RegistrySynchronization.PackedRegistryEntry> merged = null;
         for (String id : ids) {
             ResourceLocation location = ResourceLocation.tryParse(id);
-            if (location == null || !seen.add(location)) {
+            if (location == null
+                    || (skipVanillaEntries && "minecraft".equals(location.getNamespace()))
+                    || !seen.add(location)) {
                 continue;
             }
             if (merged == null) {
@@ -303,6 +306,7 @@ public final class RegistryManifests {
             buildStubEntries(Manifest manifest, @Nullable RegistryAccess hubRegistries) {
         Map<ResourceKey<Registry<Object>>, List<RegistrySynchronization.PackedRegistryEntry>> result =
                 new LinkedHashMap<>();
+        boolean skipVanillaEntries = isCrossVersion(manifest);
         manifest.registries.forEach((registryId, ids) -> {
             ResourceLocation registryLocation = ResourceLocation.tryParse(registryId);
             if (registryLocation == null || ids == null || ids.isEmpty()) {
@@ -315,7 +319,9 @@ public final class RegistryManifests {
             Set<ResourceLocation> seen = new HashSet<>();
             for (String id : ids) {
                 ResourceLocation location = ResourceLocation.tryParse(id);
-                if (location == null || !seen.add(location)) {
+                if (location == null
+                        || (skipVanillaEntries && "minecraft".equals(location.getNamespace()))
+                        || !seen.add(location)) {
                     continue;
                 }
                 if (hubRegistry.isPresent() && hubRegistry.get().containsKey(location)) {
@@ -328,6 +334,12 @@ public final class RegistryManifests {
             }
         });
         return result;
+    }
+
+    private static boolean isCrossVersion(Manifest manifest) {
+        return manifest.minecraftVersion != null
+                && !manifest.minecraftVersion.isEmpty()
+                && !"1.21.1".equals(manifest.minecraftVersion);
     }
 
     /**
