@@ -149,12 +149,19 @@ public final class HubPortalVisuals {
                     || player.distanceToSqr(bounds.centerX, bounds.centerY, bounds.centerZ) > BLOCK_SYNC_RANGE_SQ) {
                 continue;
             }
+            Map<String, Boolean> perPortal = SENT_GATEWAY_STATES.computeIfAbsent(
+                    player.getUUID(), ignored -> new ConcurrentHashMap<>());
+            Boolean previous = perPortal.get(portal.name);
+            if (previous != null && previous.booleanValue() == showGateway) {
+                continue;
+            }
             if (interiorAir == null) {
                 interiorAir = collectInteriorAirBlocks(level, bounds);
             }
             for (BlockPos pos : interiorAir) {
                 player.connection.send(new ClientboundBlockUpdatePacket(pos, targetState));
             }
+            perPortal.put(portal.name, showGateway);
         }
     }
 
@@ -198,13 +205,16 @@ public final class HubPortalVisuals {
             ((DisplayAccessor) display)
                     .serverhub$setBillboardConstraints(Display.BillboardConstraints.CENTER);
             ((TextDisplayAccessor) display).serverhub$setBackgroundColor(0x88000000);
+            ((TextDisplayAccessor) display).serverhub$setText(buildHologramText(portal, state));
             level.addFreshEntity(display);
         } else {
-            display.setPos(holoX, holoY, holoZ);
+            if (display.distanceToSqr(holoX, holoY, holoZ) > 0.01D) {
+                display.teleportTo(holoX, holoY, holoZ);
+            }
+            ((TextDisplayAccessor) display).serverhub$setText(buildHologramText(portal, state));
         }
 
         HOLOGRAM_IDS.put(portal.name, display.getUUID());
-        ((TextDisplayAccessor) display).serverhub$setText(buildHologramText(portal, state));
     }
 
     private static Display.TextDisplay findOrCleanupHologram(
