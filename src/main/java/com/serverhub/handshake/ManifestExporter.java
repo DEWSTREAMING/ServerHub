@@ -4,12 +4,14 @@ import com.google.gson.Gson;
 import com.serverhub.config.HubConfig;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import net.minecraft.core.RegistrySynchronization;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.resources.Resource;
@@ -46,6 +48,7 @@ public final class ManifestExporter {
         }
         payload.modIds.addAll(mods);
 
+        Set<ResourceLocation> networkedRegIds = new HashSet<>();
         ResourceManager resourceManager = server.getResourceManager();
         RegistrySynchronization.networkedRegistries(server.registries()).forEach(entry -> {
             ResourceLocation regLoc = entry.key().location();
@@ -53,6 +56,7 @@ public final class ManifestExporter {
             if (EXCLUDED_REGISTRIES.contains(regId)) {
                 return;
             }
+            networkedRegIds.add(regLoc);
             List<String> keys = new ArrayList<>();
             entry.value().keySet().forEach(id -> {
                 if (hasKnownPackBacking(resourceManager, regLoc, id)) {
@@ -66,8 +70,12 @@ public final class ManifestExporter {
         });
 
         server.registryAccess().registries().forEach(entry -> {
-            String regId = entry.key().location().toString();
+            ResourceLocation regLoc = entry.key().location();
+            String regId = regLoc.toString();
             if (EXCLUDED_REGISTRIES.contains(regId)) {
+                return;
+            }
+            if (!BuiltInRegistries.REGISTRY.containsKey(regLoc) && !networkedRegIds.contains(regLoc)) {
                 return;
             }
             List<String> tagNames = entry.value()
