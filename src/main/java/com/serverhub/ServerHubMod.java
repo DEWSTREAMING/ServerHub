@@ -5,6 +5,7 @@ import com.serverhub.chat.ChatMuteManager;
 import com.serverhub.command.HubCommands;
 import com.serverhub.config.HubConfig;
 import com.serverhub.handshake.ClientModTracker;
+import com.serverhub.handshake.ManifestExporter;
 import com.serverhub.portal.HubPortalManager;
 import com.serverhub.relay.RelayClient;
 import com.serverhub.relay.RelayMessage;
@@ -42,6 +43,7 @@ public class ServerHubMod {
 
     private static volatile RelayServer relayServer;
     private static volatile RelayClient relayClient;
+    private static volatile String cachedManifestJson;
 
     public ServerHubMod(IEventBus modEventBus) {
         NeoForge.EVENT_BUS.register(this);
@@ -116,6 +118,15 @@ public class ServerHubMod {
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         RelayClient rc = relayClient;
+        if (!HubConfig.get().isHubRole()) {
+            cachedManifestJson = ManifestExporter.exportJson(event.getServer());
+            if (rc != null) {
+                rc.setManifestSupplier(() -> cachedManifestJson);
+                if (rc.isConnected()) {
+                    rc.sendManifest(cachedManifestJson);
+                }
+            }
+        }
         if (rc != null && rc.isConnected()) {
             rc.sendHeartbeat(buildLocalStatus(event.getServer(), "ONLINE"));
         }
@@ -124,6 +135,7 @@ public class ServerHubMod {
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         TransferManager.evacuatePlayersToHubOnShutdown(event.getServer());
+        cachedManifestJson = null;
 
         RelayClient rc = relayClient;
         relayClient = null;
