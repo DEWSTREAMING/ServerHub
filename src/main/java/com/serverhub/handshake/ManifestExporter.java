@@ -10,7 +10,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import net.minecraft.core.RegistrySynchronization;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.neoforged.fml.ModList;
 
 /**
@@ -43,13 +46,19 @@ public final class ManifestExporter {
         }
         payload.modIds.addAll(mods);
 
+        ResourceManager resourceManager = server.getResourceManager();
         RegistrySynchronization.networkedRegistries(server.registries()).forEach(entry -> {
-            String regId = entry.key().identifier().toString();
+            Identifier regLoc = entry.key().identifier();
+            String regId = regLoc.toString();
             if (EXCLUDED_REGISTRIES.contains(regId)) {
                 return;
             }
             List<String> keys = new ArrayList<>();
-            entry.value().keySet().forEach(id -> keys.add(id.toString()));
+            entry.value().keySet().forEach(id -> {
+                if (hasKnownPackBacking(resourceManager, regLoc, id)) {
+                    keys.add(id.toString());
+                }
+            });
             if (!keys.isEmpty()) {
                 Collections.sort(keys);
                 payload.registries.put(regId, keys);
@@ -72,6 +81,17 @@ public final class ManifestExporter {
         });
 
         return GSON.toJson(payload);
+    }
+
+    private static boolean hasKnownPackBacking(
+            ResourceManager resourceManager, Identifier regLoc, Identifier entryId) {
+        String prefix = "minecraft".equals(regLoc.getNamespace())
+                ? regLoc.getPath()
+                : regLoc.getNamespace() + "/" + regLoc.getPath();
+        Identifier jsonLoc = Identifier.fromNamespaceAndPath(
+                entryId.getNamespace(), prefix + "/" + entryId.getPath() + ".json");
+        Resource resource = resourceManager.getResource(jsonLoc).orElse(null);
+        return resource != null && resource.source().knownPackInfo().isPresent();
     }
 
     private static final class ManifestPayload {
