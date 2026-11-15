@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 
 public final class RelayServer {
@@ -34,10 +35,15 @@ public final class RelayServer {
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private ScheduledExecutorService watchdog;
+    private volatile Consumer<String> manifestListener;
 
     public RelayServer(int port, String sharedSecret) {
         this.configuredPort = port;
         this.sharedSecret = sharedSecret != null ? sharedSecret : "";
+    }
+
+    public void setManifestListener(Consumer<String> listener) {
+        this.manifestListener = listener;
     }
 
     public void start() throws IOException {
@@ -225,6 +231,12 @@ public final class RelayServer {
                     broadcastSnapshot();
                 }
                 case RelayMessage.TYPE_CHAT, RelayMessage.TYPE_PLAYER_ORIGIN -> broadcastToOthers(this, rawJson);
+                case RelayMessage.TYPE_REGISTRY_MANIFEST -> {
+                    Consumer<String> listener = manifestListener;
+                    if (listener != null && msg.manifestJson != null && !msg.manifestJson.isBlank()) {
+                        listener.accept(msg.manifestJson);
+                    }
+                }
                 default -> {}
             }
         }

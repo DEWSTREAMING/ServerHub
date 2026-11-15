@@ -1,6 +1,7 @@
 package com.serverhub.handshake;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.mojang.logging.LogUtils;
 import io.netty.buffer.Unpooled;
@@ -44,6 +45,7 @@ import org.slf4j.Logger;
 public final class RegistryManifests {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new Gson();
+    private static final Gson PRETTY_GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Set<String> IMPLICIT_NAMESPACES =
             Set.of("minecraft", "neoforge", "c", "common", "forge", "fabric");
     private static final double MIN_MATCH_RATIO = 0.85D;
@@ -130,6 +132,58 @@ public final class RegistryManifests {
                     manifest.entryCount(),
                     manifest.tagCount());
         }
+    }
+
+    @Nullable
+    public static synchronized Manifest upsertFromJson(String json, boolean persist) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        Manifest incoming;
+        try {
+            incoming = GSON.fromJson(json, Manifest.class);
+        } catch (JsonParseException e) {
+            LOGGER.warn("Ignoring malformed synced registry manifest: {}", e.getMessage());
+            return null;
+        }
+        if (incoming == null) {
+            return null;
+        }
+        incoming.normalize();
+        if (incoming.packId.isBlank()) {
+            LOGGER.warn("Ignoring synced registry manifest with blank packId");
+            return null;
+        }
+
+        List<Manifest> updated = new ArrayList<>();
+        for (Manifest existing : manifests) {
+            if (!incoming.packId.equalsIgnoreCase(existing.packId)) {
+                updated.add(existing);
+            }
+        }
+        updated.add(incoming);
+        manifests = List.copyOf(updated);
+        loaded = true;
+
+        if (persist) {
+            String safeName = incoming.packId.replaceAll("[^a-zA-Z0-9._-]", "_");
+            Path out = directory().resolve(safeName + ".json");
+            try {
+                Files.createDirectories(out.getParent());
+                Files.writeString(out, PRETTY_GSON.toJson(incoming) + "\n", StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to persist synced registry manifest to {}", out, e);
+            }
+        }
+
+        LOGGER.info(
+                "Synced registry manifest '{}' from relay (MC {}, {} mods, {} entries, {} tags)",
+                incoming.packId,
+                incoming.minecraftVersion,
+                incoming.modIds.size(),
+                incoming.entryCount(),
+                incoming.tagCount());
+        return incoming;
     }
 
     @Nullable

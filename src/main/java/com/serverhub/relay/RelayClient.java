@@ -42,6 +42,7 @@ public final class RelayClient {
     private volatile BiConsumer<ServerStatusInfo, String> statusChangeListener;
     private volatile Consumer<RelayMessage> chatListener;
     private volatile BiConsumer<UUID, String> playerOriginListener;
+    private volatile Supplier<String> manifestSupplier;
 
     public RelayClient(String host, int port, String secret) {
         this.host = host != null ? host : "127.0.0.1";
@@ -63,6 +64,10 @@ public final class RelayClient {
 
     public void setPlayerOriginListener(BiConsumer<UUID, String> listener) {
         this.playerOriginListener = listener;
+    }
+
+    public void setManifestSupplier(Supplier<String> supplier) {
+        this.manifestSupplier = supplier;
     }
 
     public void start() {
@@ -145,6 +150,26 @@ public final class RelayClient {
         return sendMessage(RelayMessage.playerOrigin(playerUuid.toString(), originServerId));
     }
 
+    public boolean sendManifest(String manifestJson) {
+        if (manifestJson == null || manifestJson.isBlank()) {
+            return false;
+        }
+        return sendMessage(RelayMessage.registryManifest(manifestJson));
+    }
+
+    private void sendCachedManifest() {
+        if (!running || !connected) {
+            return;
+        }
+        Supplier<String> supplier = this.manifestSupplier;
+        if (supplier != null) {
+            String json = supplier.get();
+            if (json != null && !json.isBlank()) {
+                sendManifest(json);
+            }
+        }
+    }
+
     private void sendScheduledHeartbeat() {
         if (!running || !connected) {
             return;
@@ -176,6 +201,7 @@ public final class RelayClient {
 
                 // Push immediate status upon connecting instead of waiting for the next tick interval.
                 sendScheduledHeartbeat();
+                sendCachedManifest();
 
                 String line;
                 while (running && (line = in.readLine()) != null) {
