@@ -9,6 +9,7 @@ public final class RelayMessage {
     public static final String TYPE_CHAT = "CHAT";
     public static final String TYPE_PLAYER_ORIGIN = "PLAYER_ORIGIN";
     public static final String TYPE_REGISTRY_MANIFEST = "REGISTRY_MANIFEST";
+    public static final String TYPE_PLAYER_PRESENCE = "PLAYER_PRESENCE";
 
     public String type;
     public String secret;
@@ -22,6 +23,7 @@ public final class RelayMessage {
     public String playerUuid;
     public String originServerId;
     public String manifestJson;
+    public boolean joined;
 
     public RelayMessage() {}
 
@@ -74,6 +76,22 @@ public final class RelayMessage {
         RelayMessage msg = new RelayMessage();
         msg.type = TYPE_REGISTRY_MANIFEST;
         msg.manifestJson = manifestJson;
+        return msg;
+    }
+
+    public static RelayMessage playerPresence(
+            String sourceServerId,
+            String sourceDisplayName,
+            String playerUuid,
+            String playerName,
+            boolean joined) {
+        RelayMessage msg = new RelayMessage();
+        msg.type = TYPE_PLAYER_PRESENCE;
+        msg.sourceServerId = sourceServerId;
+        msg.sourceDisplayName = sourceDisplayName;
+        msg.playerUuid = playerUuid;
+        msg.senderName = playerName;
+        msg.joined = joined;
         return msg;
     }
 }
