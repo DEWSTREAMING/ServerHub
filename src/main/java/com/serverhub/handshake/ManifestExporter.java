@@ -99,7 +99,17 @@ public final class ManifestExporter {
         Identifier jsonLoc = Identifier.fromNamespaceAndPath(
                 entryId.getNamespace(), prefix + "/" + entryId.getPath() + ".json");
         Resource resource = resourceManager.getResource(jsonLoc).orElse(null);
-        return resource != null && resource.source().knownPackInfo().isPresent();
+        if (resource == null) {
+            return false;
+        }
+        var knownPack = resource.source().knownPackInfo();
+        if (knownPack.isEmpty()) {
+            return false;
+        }
+        // Skip vanilla minecraft:core entries; ViaVersion supplies 26.1.2 vanilla entries itself,
+        // while modded entries (including modded minecraft:* IDs like minecraft:demonite) remain.
+        return !("minecraft".equals(knownPack.get().namespace())
+                && "core".equals(knownPack.get().id()));
     }
 
     private static final class ManifestPayload {
