@@ -1,5 +1,6 @@
 package com.serverhub.handshake;
 
+import io.netty.util.AttributeKey;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -14,6 +15,8 @@ import net.minecraft.network.ConnectionProtocol;
 import net.neoforged.neoforge.network.payload.ModdedNetworkQueryComponent;
 
 public final class ClientModTracker {
+    public static final AttributeKey<Boolean> SABLE_COMPAT_KEY =
+            AttributeKey.valueOf("serverhub:sable_compat");
     private static final Map<UUID, Set<String>> PLAYER_CLIENT_MODS = new ConcurrentHashMap<>();
     private static final Map<UUID, String> PLAYER_ORIGIN_SERVER = new ConcurrentHashMap<>();
 

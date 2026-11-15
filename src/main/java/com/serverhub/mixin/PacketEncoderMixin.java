@@ -1,11 +1,14 @@
 package com.serverhub.mixin;
 
+import com.serverhub.handshake.ClientModTracker;
 import com.serverhub.network.BlockStateRemapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.PacketEncoder;
 import net.minecraft.network.PacketListener;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -37,5 +40,11 @@ public abstract class PacketEncoderMixin<T extends PacketListener> {
     private void serverhub$popBlockStateRemap(
             ChannelHandlerContext ctx, Packet<T> packet, ByteBuf out, CallbackInfo ci) {
         BlockStateRemapper.clearActiveEncodeRemap();
+        if (Boolean.TRUE.equals(ctx.channel().attr(ClientModTracker.SABLE_COMPAT_KEY).get())
+                && (packet instanceof ClientboundMoveEntityPacket.Pos
+                        || packet instanceof ClientboundMoveEntityPacket.PosRot
+                        || packet instanceof ClientboundTeleportEntityPacket)) {
+            out.writeBoolean(false);
+        }
     }
 }

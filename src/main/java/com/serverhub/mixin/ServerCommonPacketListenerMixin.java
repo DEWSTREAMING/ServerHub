@@ -180,9 +180,14 @@ public abstract class ServerCommonPacketListenerMixin {
                     clientMods.contains("amendments"),
                     this.serverhub$blockRemapTable != null);
             Channel channel = this.connection != null ? this.connection.channel() : null;
-            if (channel != null && this.serverhub$blockRemapTable != null) {
-                channel.attr(BlockStateRemapper.CHANNEL_REMAP_KEY)
-                        .set(this.serverhub$blockRemapTable);
+            if (channel != null) {
+                if (this.serverhub$blockRemapTable != null) {
+                    channel.attr(BlockStateRemapper.CHANNEL_REMAP_KEY)
+                            .set(this.serverhub$blockRemapTable);
+                }
+                if (clientMods.contains("sable")) {
+                    channel.attr(ClientModTracker.SABLE_COMPAT_KEY).set(Boolean.TRUE);
+                }
             }
         }
         return this.serverhub$blockRemapTable;
